@@ -24,8 +24,15 @@ public class SqlInjectionLesson13Test extends LessonTest {
         .andExpect(status().isOk());
   }
 
+  /**
+   * The following tests previously verified blind SQL injection behaviour of the vulnerable
+   * endpoint. After the SQL injection fix (column-name allowlist), CASE expressions are no
+   * longer valid column values and must be rejected by the server. Each test now asserts a
+   * server-error response, confirming the injection payloads are blocked.
+   */
   @Test
-  public void addressCorrectShouldOrderByHostname() throws Exception {
+  public void addressCorrectShouldBeRejectedAfterFix() throws Exception {
+    // Previously: isOk() and ordered by hostname. Now: rejected by allowlist.
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
@@ -33,12 +40,12 @@ public class SqlInjectionLesson13Test extends LessonTest {
                     "column",
                     "CASE WHEN (SELECT ip FROM servers WHERE hostname='webgoat-prd') LIKE '104.%'"
                         + " THEN hostname ELSE id END"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+        .andExpect(status().is5xxServerError());
   }
 
   @Test
-  public void addressCorrectShouldOrderByHostnameUsingSubstr() throws Exception {
+  public void addressCorrectUsingSubstrShouldBeRejectedAfterFix() throws Exception {
+    // Previously: isOk() and ordered by hostname. Now: rejected by allowlist.
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
@@ -46,8 +53,7 @@ public class SqlInjectionLesson13Test extends LessonTest {
                     "column",
                     "case when (select ip from servers where hostname='webgoat-prd' and"
                         + " substr(ip,1,1) = '1') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+        .andExpect(status().is5xxServerError());
 
     mockMvc
         .perform(
@@ -56,8 +62,7 @@ public class SqlInjectionLesson13Test extends LessonTest {
                     "column",
                     "case when (select ip from servers where hostname='webgoat-prd' and"
                         + " substr(ip,2,1) = '0') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+        .andExpect(status().is5xxServerError());
 
     mockMvc
         .perform(
@@ -66,12 +71,12 @@ public class SqlInjectionLesson13Test extends LessonTest {
                     "column",
                     "case when (select ip from servers where hostname='webgoat-prd' and"
                         + " substr(ip,3,1) = '4') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+        .andExpect(status().is5xxServerError());
   }
 
   @Test
-  public void addressIncorrectShouldOrderByIdUsingSubstr() throws Exception {
+  public void addressIncorrectUsingSubstrShouldBeRejectedAfterFix() throws Exception {
+    // Previously: isOk() and ordered by id. Now: rejected by allowlist.
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
@@ -79,34 +84,32 @@ public class SqlInjectionLesson13Test extends LessonTest {
                     "column",
                     "case when (select ip from servers where hostname='webgoat-prd' and"
                         + " substr(ip,1,1) = '9') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-dev")));
+        .andExpect(status().is5xxServerError());
   }
 
   @Test
-  public void trueShouldSortByHostname() throws Exception {
+  public void trueCaseExpressionShouldBeRejectedAfterFix() throws Exception {
+    // Previously: isOk() and ordered by hostname. Now: rejected by allowlist.
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
                 .param("column", "(case when (true) then hostname else id end)"))
-        .andExpect(status().isOk())
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+        .andExpect(status().is5xxServerError());
   }
 
   @Test
-  public void falseShouldSortById() throws Exception {
+  public void falseCaseExpressionShouldBeRejectedAfterFix() throws Exception {
+    // Previously: isOk() and ordered by id. Now: rejected by allowlist.
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param("column", "(case when (true) then hostname else id end)"))
-        .andExpect(status().isOk())
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+                .param("column", "(case when (false) then hostname else id end)"))
+        .andExpect(status().is5xxServerError());
   }
 
   @Test
-  public void addressIncorrectShouldOrderByHostname() throws Exception {
+  public void addressIncorrectShouldBeRejectedAfterFix() throws Exception {
+    // Previously: isOk() and ordered by id. Now: rejected by allowlist.
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
@@ -114,8 +117,7 @@ public class SqlInjectionLesson13Test extends LessonTest {
                     "column",
                     "CASE WHEN (SELECT ip FROM servers WHERE hostname='webgoat-prd') LIKE '192.%'"
                         + " THEN hostname ELSE id END"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-dev")));
+        .andExpect(status().is5xxServerError());
   }
 
   @Test
