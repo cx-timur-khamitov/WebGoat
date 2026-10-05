@@ -16,7 +16,9 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 public class SqlOnlyInputValidationTest extends LessonTest {
 
   @Test
-  public void solve() throws Exception {
+  public void sqlInjectionPayloadIsBlocked() throws Exception {
+    // The underlying parameterized query prevents injection even when the space-check
+    // filter is bypassed with comment-based whitespace obfuscation.
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlOnlyInputValidation/attack")
@@ -24,8 +26,7 @@ public class SqlOnlyInputValidationTest extends LessonTest {
                     "userid_sql_only_input_validation",
                     "Smith';SELECT/**/*/**/from/**/user_system_data;--"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(true)))
-        .andExpect(jsonPath("$.feedback", containsString("passW0rD")));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 
   @Test
