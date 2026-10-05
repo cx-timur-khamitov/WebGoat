@@ -76,7 +76,15 @@ public class ProfileZipSlip extends ProfileUploadBase {
       Enumeration<? extends ZipEntry> entries = zip.entries();
       while (entries.hasMoreElements()) {
         ZipEntry e = entries.nextElement();
-        File f = new File(tmpZipDirectory.toFile(), e.getName());
+        // Resolve and normalize to prevent Zip Slip path traversal (CWE-36):
+        // Verify that the resolved path is strictly within tmpZipDirectory.
+        java.nio.file.Path resolvedPath =
+            tmpZipDirectory.resolve(e.getName()).normalize();
+        if (!resolvedPath.startsWith(tmpZipDirectory)) {
+          throw new IOException(
+              "Zip Slip detected: entry escapes target directory: " + e.getName());
+        }
+        File f = resolvedPath.toFile();
         InputStream is = zip.getInputStream(e);
         Files.copy(is, f.toPath(), StandardCopyOption.REPLACE_EXISTING);
       }
