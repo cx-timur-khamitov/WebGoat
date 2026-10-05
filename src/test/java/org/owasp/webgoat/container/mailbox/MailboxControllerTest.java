@@ -145,4 +145,88 @@ class MailboxControllerTest extends LessonTest {
         .andExpect(view().name("mailbox"))
         .andExpect(content().string(not(containsString("Click this mail"))));
   }
+
+  // ── Validation tests verifying the CWE-472 parameter-tampering fix ──────────
+
+  @Test
+  public void sendEmailWithMissingRecipientShouldBeRejected() throws Exception {
+    // An attacker omitting the recipient field must be rejected (400 Bad Request)
+    // before the tainted value reaches mailboxRepository.save().
+    String body =
+        "{\"sender\":\"attacker@webgoat.org\",\"title\":\"Title\","
+            + "\"contents\":\"Payload\",\"recipient\":\"\"}";
+    this.mockMvc
+        .perform(post("/mail").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  public void sendEmailWithMissingSenderShouldBeRejected() throws Exception {
+    // An attacker omitting the sender field must be rejected (400 Bad Request)
+    // so they cannot impersonate an arbitrary sender identity.
+    String body =
+        "{\"sender\":\"\",\"title\":\"Title\","
+            + "\"contents\":\"Payload\",\"recipient\":\"victim@webgoat.org\"}";
+    this.mockMvc
+        .perform(post("/mail").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  public void sendEmailWithMissingContentsShouldBeRejected() throws Exception {
+    // Empty contents must be rejected to prevent blank-payload tampering.
+    String body =
+        "{\"sender\":\"sender@webgoat.org\",\"title\":\"Title\","
+            + "\"contents\":\"\",\"recipient\":\"victim@webgoat.org\"}";
+    this.mockMvc
+        .perform(post("/mail").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  public void sendEmailWithMissingTitleShouldBeRejected() throws Exception {
+    // Empty title must be rejected.
+    String body =
+        "{\"sender\":\"sender@webgoat.org\",\"title\":\"\","
+            + "\"contents\":\"Some content\",\"recipient\":\"victim@webgoat.org\"}";
+    this.mockMvc
+        .perform(post("/mail").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  public void sendEmailWithNullRecipientShouldBeRejected() throws Exception {
+    // A null recipient must be rejected to prevent unvalidated CRUD writes.
+    String body =
+        "{\"sender\":\"sender@webgoat.org\",\"title\":\"Title\","
+            + "\"contents\":\"Some content\"}";
+    this.mockMvc
+        .perform(post("/mail").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  public void sendEmailWithRecipientExceedingMaxLengthShouldBeRejected() throws Exception {
+    // A recipient longer than 255 characters must be rejected.
+    String longRecipient = "a".repeat(256) + "@webgoat.org";
+    String body =
+        "{\"sender\":\"sender@webgoat.org\",\"title\":\"Title\","
+            + "\"contents\":\"Some content\",\"recipient\":\""
+            + longRecipient
+            + "\"}";
+    this.mockMvc
+        .perform(post("/mail").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  public void sendEmailWithAllValidFieldsIsAccepted() throws Exception {
+    // A fully-populated, valid email must still be accepted (regression guard).
+    String body =
+        "{\"sender\":\"sender@webgoat.org\",\"title\":\"Hello\","
+            + "\"contents\":\"Valid content\",\"recipient\":\"user@webgoat.org\"}";
+    this.mockMvc
+        .perform(post("/mail").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isCreated());
+  }
 }

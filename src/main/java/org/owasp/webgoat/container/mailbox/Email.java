@@ -10,6 +10,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -31,11 +33,21 @@ public class Email implements Serializable {
 
   @JsonIgnore private LocalDateTime time = LocalDateTime.now();
 
+  @NotBlank
+  @Size(max = 1024)
   @Column(length = 1024)
   private String contents;
 
+  @NotBlank
+  @Size(max = 255)
   private String sender;
+
+  @NotBlank
+  @Size(max = 255)
   private String title;
+
+  @NotBlank
+  @Size(max = 255)
   private String recipient;
 
   // Tracks whether the recipient has opened the mailbox since this mail arrived. "read" is a
