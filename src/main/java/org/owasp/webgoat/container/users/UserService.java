@@ -75,7 +75,23 @@ public class UserService implements UserDetailsService {
   }
 
   private void createLessonsForUser(WebGoatUser webGoatUser) {
-    jdbcTemplate.execute("CREATE SCHEMA \"" + webGoatUser.getUsername() + "\" authorization dba");
+    // Use a ConnectionCallback so we can prepare the schema-creation statement through the JDBC
+    // driver's own identifier-quoting mechanism rather than concatenating an untrusted username
+    // directly into a DDL string.  DatabaseMetaData.getIdentifierQuoteString() returns the
+    // quote character recognised by the connected database (typically '"').  Any occurrence of
+    // that character inside the username is doubled (the standard SQL escaping rule for
+    // delimited identifiers), preventing SQL injection via crafted usernames.
+    jdbcTemplate.execute(
+        (java.sql.Connection con) -> {
+          String quoteChar = con.getMetaData().getIdentifierQuoteString();
+          // Escape any embedded quote characters by doubling them (SQL standard).
+          String safeUsername = webGoatUser.getUsername().replace(quoteChar, quoteChar + quoteChar);
+          String ddl = "CREATE SCHEMA " + quoteChar + safeUsername + quoteChar + " authorization dba";
+          try (java.sql.Statement stmt = con.createStatement()) {
+            stmt.execute(ddl);
+          }
+          return null;
+        });
     flywayLessons.apply(webGoatUser.getUsername()).migrate();
   }
 
