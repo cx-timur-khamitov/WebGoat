@@ -44,12 +44,13 @@
      </suppress>
     <suppress>
         <notes><![CDATA[
-        file name: xstream-1.4.5.jar
+        file name: xstream-1.4.21.jar
+        These CVEs are intentionally retained for the vulnerable-components lesson which
+        demonstrates exploitation techniques. CVE-2016-3674 (XXE) is fixed in 1.4.21.
         ]]></notes>
         <packageUrl regex="true">^pkg:maven/com\.thoughtworks\.xstream/xstream@.*$</packageUrl>
         <cpe>cpe:/a:xstream_project:xstream</cpe>
         <vulnerabilityName>CVE-2013-7285</vulnerabilityName>
-        <vulnerabilityName>CVE-2016-3674</vulnerabilityName>
         <vulnerabilityName>CVE-2017-7957</vulnerabilityName>
         <vulnerabilityName>CVE-2020-26217</vulnerabilityName>
         <vulnerabilityName>CVE-2020-26258</vulnerabilityName>
