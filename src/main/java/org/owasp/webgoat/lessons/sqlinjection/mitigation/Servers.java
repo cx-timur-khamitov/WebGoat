@@ -6,6 +6,7 @@ package org.owasp.webgoat.lessons.sqlinjection.mitigation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class Servers {
 
   private final LessonDataSource dataSource;
+
+  /** Allowlist of valid column names for the SERVERS table ORDER BY clause. */
+  private static final Set<String> ALLOWED_COLUMNS =
+      Set.of("id", "hostname", "ip", "mac", "status", "description");
 
   @AllArgsConstructor
   @Getter
@@ -43,6 +48,13 @@ public class Servers {
   @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
   @ResponseBody
   public List<Server> sort(@RequestParam String column) throws Exception {
+    // Validate the column name against the allowlist of known SERVERS table columns.
+    // ORDER BY identifiers cannot be bound as JDBC parameters, so an allowlist is the
+    // SAST-recognized mitigation for SQL injection in this context (CWE-89).
+    if (!ALLOWED_COLUMNS.contains(column)) {
+      throw new IllegalArgumentException("Invalid column name: " + column);
+    }
+
     List<Server> servers = new ArrayList<>();
 
     try (var connection = dataSource.getConnection()) {
