@@ -6,11 +6,13 @@ package org.owasp.webgoat.lessons.sqlinjection.mitigation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.owasp.webgoat.container.LessonDataSource;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,6 +25,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class Servers {
 
   private final LessonDataSource dataSource;
+
+  /** Allowlist of valid column names for ORDER BY to prevent SQL injection. */
+  private static final Set<String> ALLOWED_COLUMNS =
+      Set.of("id", "hostname", "ip", "mac", "status", "description");
 
   @AllArgsConstructor
   @Getter
@@ -42,7 +48,14 @@ public class Servers {
 
   @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
   @ResponseBody
-  public List<Server> sort(@RequestParam String column) throws Exception {
+  public ResponseEntity<?> sort(@RequestParam String column) throws Exception {
+    // Validate column against an allowlist before using it in the ORDER BY clause.
+    // ORDER BY column names cannot be parameterized via JDBC '?' placeholders, so an
+    // allowlist is the standard mitigation for ORDER BY SQL injection (CWE-89).
+    if (!ALLOWED_COLUMNS.contains(column)) {
+      return ResponseEntity.badRequest().body("Invalid column name: " + column);
+    }
+
     List<Server> servers = new ArrayList<>();
 
     try (var connection = dataSource.getConnection()) {
@@ -66,6 +79,6 @@ public class Servers {
         }
       }
     }
-    return servers;
+    return ResponseEntity.ok(servers);
   }
 }
