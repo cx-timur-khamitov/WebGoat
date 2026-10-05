@@ -75,7 +75,11 @@ public class UserService implements UserDetailsService {
   }
 
   private void createLessonsForUser(WebGoatUser webGoatUser) {
-    jdbcTemplate.execute("CREATE SCHEMA \"" + webGoatUser.getUsername() + "\" authorization dba");
+    // Escape any embedded double-quote characters to prevent SQL identifier injection.
+    // SQL standard identifier quoting: a literal double-quote inside a delimited identifier
+    // is represented as two consecutive double-quote characters ("").
+    String safeSchemaName = webGoatUser.getUsername().replace("\"", "\"\"");
+    jdbcTemplate.execute("CREATE SCHEMA \"" + safeSchemaName + "\" authorization dba");
     flywayLessons.apply(webGoatUser.getUsername()).migrate();
   }
 
