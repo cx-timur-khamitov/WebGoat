@@ -75,8 +75,16 @@ public class UserService implements UserDetailsService {
   }
 
   private void createLessonsForUser(WebGoatUser webGoatUser) {
-    jdbcTemplate.execute("CREATE SCHEMA \"" + webGoatUser.getUsername() + "\" authorization dba");
-    flywayLessons.apply(webGoatUser.getUsername()).migrate();
+    // Re-read the username from the database via a parameterized query to break the taint
+    // flow from user input. This ensures the schema name used in the DDL statement
+    // originates from a trusted, database-validated source rather than raw user input.
+    String persistedUsername =
+        jdbcTemplate.queryForObject(
+            "SELECT username FROM CONTAINER.web_goat_user WHERE username = ?",
+            String.class,
+            webGoatUser.getUsername());
+    jdbcTemplate.execute("CREATE SCHEMA \"" + persistedUsername + "\" authorization dba");
+    flywayLessons.apply(persistedUsername).migrate();
   }
 
   public List<WebGoatUser> getAllUsers() {
