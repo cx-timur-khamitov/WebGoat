@@ -10,6 +10,7 @@ import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -27,6 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
     value = {"SqlStringInjectionHint4-1", "SqlStringInjectionHint4-2", "SqlStringInjectionHint4-3"})
 public class SqlInjectionLesson4 implements AssignmentEndpoint {
 
+  // The exact DDL statement students are expected to submit for this lesson
+  static final String EXPECTED_DDL = "alter table employees add column phone varchar(20)";
+
   private final LessonDataSource dataSource;
 
   public SqlInjectionLesson4(LessonDataSource dataSource) {
@@ -40,22 +44,34 @@ public class SqlInjectionLesson4 implements AssignmentEndpoint {
   }
 
   protected AttackResult injectableQuery(String query) {
+    // Validate the user's input against the expected DDL statement.
+    // Only the known-safe, hardcoded statement is ever executed against the database;
+    // the user-supplied string is never passed directly to a SQL execution API.
+    if (!EXPECTED_DDL.equalsIgnoreCase(query == null ? "" : query.trim())) {
+      return failed(this).output("").build();
+    }
+
     try (Connection connection = dataSource.getConnection()) {
-      try (Statement statement =
-          connection.createStatement(TYPE_SCROLL_INSENSITIVE, CONCUR_READ_ONLY)) {
-        statement.executeUpdate(query);
+      // Execute only the hardcoded, known-safe DDL — user input is not used in the query.
+      try (PreparedStatement ps =
+          connection.prepareStatement("alter table employees add column phone varchar(20)")) {
+        ps.execute();
         connection.commit();
-        ResultSet results = statement.executeQuery("SELECT phone from employees;");
+      } catch (SQLException sqle) {
+        // Column may already exist from a prior attempt; continue to check the result.
+      }
+
+      try (Statement checkStatement =
+          connection.createStatement(TYPE_SCROLL_INSENSITIVE, CONCUR_READ_ONLY)) {
+        ResultSet results = checkStatement.executeQuery("SELECT phone from employees");
         StringBuilder output = new StringBuilder();
-        // user completes lesson if column phone exists
+        // Lesson is complete when the phone column exists
         if (results.first()) {
-          output.append("<span class='feedback-positive'>" + query + "</span>");
+          output.append("<span class='feedback-positive'>").append(query).append("</span>");
           return success(this).output(output.toString()).build();
         } else {
           return failed(this).output(output.toString()).build();
         }
-      } catch (SQLException sqle) {
-        return failed(this).output(sqle.getMessage()).build();
       }
     } catch (Exception e) {
       return failed(this).output(this.getClass().getName() + " : " + e.getMessage()).build();
