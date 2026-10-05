@@ -111,6 +111,9 @@
     <xstream.version>1.4.5</xstream.version>
     <!-- do not update necessary for lesson -->
     <zxcvbn.version>1.9.0</zxcvbn.version>
+    <!-- Override Spring Boot BOM Jackson 3 version to fix CVE-2026-91777 (CWE-400 ReDoS/quadratic
+         CPU in @JsonIdentityInfo forward-reference resolution). Fixed in 3.1.7. -->
+    <jackson3.version>3.1.7</jackson3.version>
   </properties>
 
   <dependencyManagement>
