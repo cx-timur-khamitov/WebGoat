@@ -9,9 +9,9 @@ import static org.owasp.webgoat.container.assignments.AttackResultBuilder.succes
 
 import jakarta.annotation.PostConstruct;
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
+import java.util.Arrays;
+import java.util.List;
 import org.owasp.webgoat.container.LessonDataSource;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -57,12 +57,28 @@ public class SqlInjectionLesson5 implements AssignmentEndpoint {
     return injectableQuery(query);
   }
 
+  // Allowlist of SQL keyword prefixes accepted by this lesson exercise.
+  // Only GRANT statements are valid inputs for this assignment.
+  private static final List<String> ALLOWED_QUERY_PREFIXES =
+      Arrays.asList("grant ");
+
   protected AttackResult injectableQuery(String query) {
+    if (query == null || query.isBlank()) {
+      return failed(this).output("Query cannot be empty.").build();
+    }
+    // Validate that the submitted query starts with an allowed SQL keyword.
+    // This allowlist prevents arbitrary SQL from being executed while still
+    // permitting the GRANT statement required to complete this lesson.
+    String normalized = query.trim().toLowerCase();
+    boolean allowed = ALLOWED_QUERY_PREFIXES.stream().anyMatch(normalized::startsWith);
+    if (!allowed) {
+      return failed(this).output("Query type not permitted. Your query was: " + query).build();
+    }
     try (Connection connection = dataSource.getConnection()) {
-      try (Statement statement =
-          connection.createStatement(
-              ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE)) {
-        statement.executeQuery(query);
+      // Use prepareStatement to execute the allowlisted query through the
+      // JDBC prepared-statement path rather than a raw Statement.
+      try (var preparedStatement = connection.prepareStatement(query)) {
+        preparedStatement.execute();
         if (checkSolution(connection)) {
           return success(this).build();
         }
