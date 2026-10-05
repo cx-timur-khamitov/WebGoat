@@ -30,31 +30,32 @@ $(document).ready(function () {
     getServers('id');
 });
 
-var html = '<tr class="STATUS">' +
-    '<td class="col-check"><input type="checkbox" class="form-check-input"/></td>' +
-    '<td>HOSTNAME</td>' +
-    '<td>IP</td>' +
-    '<td>MAC</td>' +
-    '<td class="status">ONLINE</td>' +
-    '<td>DESCRIPTION</td>' +
-    '</tr>';
-
 function getServers(column) {
     $.get("SqlInjectionMitigations/servers?column=" + column, function (result, status) {
         $("#servers").empty();
         for (var i = 0; i < result.length; i++) {
-            var server = html.replace('ID', result[i].id);
-            var status = "success";
+            var rowStatus = "success";
             if (result[i].status === 'offline') {
-                status = "danger";
+                rowStatus = "danger";
             }
-            server = server.replace('ONLINE', status);
-            server = server.replace('STATUS', status);
-            server = server.replace('HOSTNAME', result[i].hostname);
-            server = server.replace('IP', result[i].ip);
-            server = server.replace('MAC', result[i].mac);
-            server = server.replace('DESCRIPTION', result[i].description);
-            $("#servers").append(server);
+
+            // Build the row using DOM construction so that server-supplied text
+            // is assigned via textContent, never interpreted as HTML markup.
+            // This eliminates the DOM-XSS sink that existed when an HTML template
+            // string was assembled via .replace() and fed to jQuery .append().
+            var $row = $('<tr>').addClass(rowStatus);
+
+            var $checkCell = $('<td>').addClass('col-check');
+            $checkCell.append($('<input>').attr('type', 'checkbox').addClass('form-check-input'));
+            $row.append($checkCell);
+
+            $('<td>').text(result[i].hostname).appendTo($row);
+            $('<td>').text(result[i].ip).appendTo($row);
+            $('<td>').text(result[i].mac).appendTo($row);
+            $('<td>').addClass('status').text(rowStatus).appendTo($row);
+            $('<td>').text(result[i].description).appendTo($row);
+
+            $("#servers").append($row);
         }
 
     });
