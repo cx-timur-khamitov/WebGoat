@@ -6,6 +6,7 @@ package org.owasp.webgoat.lessons.sqlinjection.mitigation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("SqlInjectionMitigations/servers")
@@ -23,6 +26,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class Servers {
 
   private final LessonDataSource dataSource;
+
+  /** Allowlist of valid column names for ORDER BY to prevent SQL injection. */
+  private static final Set<String> ALLOWED_COLUMNS =
+      Set.of("id", "hostname", "ip", "mac", "status", "description");
 
   @AllArgsConstructor
   @Getter
@@ -43,6 +50,12 @@ public class Servers {
   @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
   @ResponseBody
   public List<Server> sort(@RequestParam String column) throws Exception {
+    // ORDER BY column names cannot be bound as parameters in JDBC; use an
+    // explicit allowlist to prevent SQL injection via the column argument.
+    if (!ALLOWED_COLUMNS.contains(column)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid column name");
+    }
+
     List<Server> servers = new ArrayList<>();
 
     try (var connection = dataSource.getConnection()) {
