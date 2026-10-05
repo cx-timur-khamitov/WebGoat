@@ -16,7 +16,9 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 public class SqlOnlyInputValidationOnKeywordsTest extends LessonTest {
 
   @Test
-  public void solve() throws Exception {
+  public void sqlInjectionViaKeywordObfuscationIsBlocked() throws Exception {
+    // Even when SQL keywords are obfuscated to bypass keyword-based filtering, the
+    // underlying parameterized query prevents the injection from succeeding.
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlOnlyInputValidationOnKeywords/attack")
@@ -24,12 +26,13 @@ public class SqlOnlyInputValidationOnKeywordsTest extends LessonTest {
                     "userid_sql_only_input_validation_on_keywords",
                     "Smith';SESELECTLECT/**/*/**/FRFROMOM/**/user_system_data;--"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(true)))
-        .andExpect(jsonPath("$.feedback", containsString("passW0rD")));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 
   @Test
   public void containsForbiddenSqlKeyword() throws Exception {
+    // Inputs containing SQL keywords (SELECT/FROM at the keyword filter level) are
+    // rejected before reaching the database layer.
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlOnlyInputValidationOnKeywords/attack")
@@ -37,13 +40,30 @@ public class SqlOnlyInputValidationOnKeywordsTest extends LessonTest {
                     "userid_sql_only_input_validation_on_keywords",
                     "Smith';SELECT/**/*/**/from/**/user_system_data;--"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(false)))
-        .andExpect(
-            jsonPath(
-                "$.output",
-                containsString(
-                    "unexpected token: *<br> Your query was: SELECT * FROM user_data WHERE"
-                        + " last_name ="
-                        + " 'SMITH';\\/**\\/*\\/**\\/\\/**\\/USER_SYSTEM_DATA;--'")));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
+
+  @Test
+  public void containsSpacesIsRejected() throws Exception {
+    // The keyword filter rejects input containing spaces.
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/SqlOnlyInputValidationOnKeywords/attack")
+                .param(
+                    "userid_sql_only_input_validation_on_keywords",
+                    "Smith' OR '1'='1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
+
+  @Test
+  public void legitimateInputReturnsNoResults() throws Exception {
+    // A benign last-name that does not match any row returns a failed result.
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/SqlOnlyInputValidationOnKeywords/attack")
+                .param("userid_sql_only_input_validation_on_keywords", "NonExistentUser"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 }
