@@ -37,13 +37,17 @@ public class JWTVotesEndpointTest extends LessonTest {
 
   @Test
   public void solveAssignment() throws Exception {
-    // Create new token and set alg to none and do not sign it
+    // A properly signed token with admin=true should succeed (CWE-347 fix: parseClaimsJws
+    // enforces signature verification so only HMAC-signed tokens are accepted)
     Claims claims = Jwts.claims();
     claims.put("admin", "true");
     claims.put("user", "Tom");
-    String token = Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+    String token =
+        Jwts.builder()
+            .setClaims(claims)
+            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, JWT_PASSWORD)
+            .compact();
 
-    // Call the reset endpoint
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/JWT/votings")
@@ -55,13 +59,16 @@ public class JWTVotesEndpointTest extends LessonTest {
 
   @Test
   public void solveAssignmentWithBoolean() throws Exception {
-    // Create new token and set alg to none and do not sign it
+    // A properly signed token with admin=true (boolean) should succeed
     Claims claims = Jwts.claims();
     claims.put("admin", true);
     claims.put("user", "Tom");
-    String token = Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+    String token =
+        Jwts.builder()
+            .setClaims(claims)
+            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, JWT_PASSWORD)
+            .compact();
 
-    // Call the reset endpoint
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/JWT/votings")
@@ -69,6 +76,48 @@ public class JWTVotesEndpointTest extends LessonTest {
                 .cookie(new Cookie("access_token", token)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.lessonCompleted", is(true)));
+  }
+
+  @Test
+  public void unsignedAlgNoneTokenShouldBeRejectedForReset() throws Exception {
+    // CWE-347 regression test: alg=none (unsigned) tokens must be rejected by parseClaimsJws().
+    // Previously, parse() accepted these tokens, allowing privilege escalation without a valid key.
+    Claims claims = Jwts.claims();
+    claims.put("admin", "true");
+    claims.put("user", "Tom");
+    String token = Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/votings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .cookie(new Cookie("access_token", token)))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("jwt-invalid-token"))));
+  }
+
+  @Test
+  public void tokenSignedWithWrongKeyShouldBeRejectedForReset() throws Exception {
+    // A token signed with a different key must be rejected by parseClaimsJws().
+    Claims claims = Jwts.claims();
+    claims.put("admin", "true");
+    claims.put("user", "Tom");
+    String wrongKey = io.jsonwebtoken.impl.TextCodec.BASE64.encode("wrongkey");
+    String token =
+        Jwts.builder()
+            .setClaims(claims)
+            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, wrongKey)
+            .compact();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/votings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .cookie(new Cookie("access_token", token)))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("jwt-invalid-token"))));
   }
 
   @Test
