@@ -115,6 +115,14 @@
 
   <dependencyManagement>
     <dependencies>
+      <!-- Override Spring Boot BOM to fix CVE-2026-91776 (CWE-400 unbounded memory growth
+           in TypeDeserializerBase._findDeserializer when using name-based polymorphism with
+           a defaultImpl fallback). Fixed in 2.21.6.redhat-00001. -->
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>2.21.6.redhat-00001</version>
+      </dependency>
       <dependency>
         <groupId>org.apache.commons</groupId>
         <artifactId>commons-exec</artifactId>
