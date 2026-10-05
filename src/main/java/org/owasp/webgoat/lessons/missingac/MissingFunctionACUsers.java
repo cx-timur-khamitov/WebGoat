@@ -16,6 +16,7 @@ import org.owasp.webgoat.container.CurrentUsername;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -63,6 +64,11 @@ public class MissingFunctionACUsers {
       consumes = "application/json")
   @ResponseBody
   public ResponseEntity<List<DisplayUser>> usersFixed(@CurrentUsername String username) {
+    // Server-side validation: reject requests with a missing or blank principal username
+    // to prevent parameter tampering (CWE-472) via a null/empty auth context.
+    if (!StringUtils.hasText(username)) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    }
     var currentUser = userRepository.findByUsername(username);
     if (currentUser != null && currentUser.isAdmin()) {
       return ResponseEntity.ok(
