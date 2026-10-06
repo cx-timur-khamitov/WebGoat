@@ -25,7 +25,7 @@ require.config({
   baseUrl: "js/",
   paths: {
     jquery: 'libs/jquery.min',
-    jqueryvuln: 'libs/jquery-2.1.4.min',
+    jqueryvuln: 'libs/jquery.min',
     jqueryuivuln: 'libs/jquery-ui-1.10.4',
     jqueryui: 'libs/jquery-ui.min',
     underscore: 'libs/underscore-min',
