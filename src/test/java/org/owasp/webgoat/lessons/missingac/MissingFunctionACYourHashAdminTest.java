@@ -4,7 +4,6 @@
  */
 package org.owasp.webgoat.lessons.missingac;
 
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_ADMIN;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -17,6 +16,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class MissingFunctionACYourHashAdminTest extends LessonTest {
 
+  // Salt value must match application-webgoat-test.properties: webgoat.password.salt.admin
+  private static final String TEST_SALT_ADMIN = "DeliberatelyInsecure1235";
+
   @BeforeEach
   public void setup() {
     this.mockMvc = MockMvcBuilders.webAppContextSetup(this.wac).build();
@@ -25,7 +27,7 @@ class MissingFunctionACYourHashAdminTest extends LessonTest {
   @Test
   void solve() throws Exception {
     var userHash =
-        new DisplayUser(new User("Jerry", "doesnotreallymatter", true), PASSWORD_SALT_ADMIN)
+        new DisplayUser(new User("Jerry", "doesnotreallymatter", true), TEST_SALT_ADMIN)
             .getUserHash();
     mockMvc
         .perform(
