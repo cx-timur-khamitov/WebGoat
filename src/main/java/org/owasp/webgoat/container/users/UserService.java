@@ -94,8 +94,10 @@ public class UserService implements UserDetailsService {
   public void resetPassword(String username, String newPassword) {
     WebGoatUser existing = userRepository.findByUsername(username);
     if (existing == null) {
-      throw new UsernameNotFoundException("User not found: " + username);
+      throw new UsernameNotFoundException("User not found");
     }
-    userRepository.save(new WebGoatUser(username, newPassword, existing.getRole()));
+    // Use the username from the validated database entity, not the raw user-supplied
+    // parameter, to prevent parameter tampering against the CRUD operation.
+    userRepository.save(new WebGoatUser(existing.getUsername(), newPassword, existing.getRole()));
   }
 }
