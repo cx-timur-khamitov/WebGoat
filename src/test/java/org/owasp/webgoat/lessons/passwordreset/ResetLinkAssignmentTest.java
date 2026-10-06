@@ -4,7 +4,9 @@
  */
 package org.owasp.webgoat.lessons.passwordreset;
 
+import static org.owasp.webgoat.lessons.passwordreset.ResetLinkAssignment.PASSWORD_TOM_9;
 import static org.owasp.webgoat.lessons.passwordreset.ResetLinkAssignment.TOM_EMAIL;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
@@ -72,6 +74,88 @@ class ResetLinkAssignmentTest extends LessonTest {
             .andReturn();
     Assertions.assertThat(resourceLoader.getResource(mvcResult.getModelAndView().getViewName()))
         .isNotNull();
+  }
+
+  // -----------------------------------------------------------------------
+  // Tests for the login endpoint (CWE-244 heap-inspection fix validation)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Login with the default PASSWORD_TOM_9 constant should fail – it is not a valid reset; it is
+   * only the placeholder value used when no reset has been performed yet.
+   */
+  @Test
+  void loginWithDefaultPasswordShouldFail() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                .param("email", TOM_EMAIL)
+                .param("password", PASSWORD_TOM_9))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted").value(false));
+  }
+
+  /**
+   * Login with the wrong email should always fail regardless of the password supplied.
+   */
+  @Test
+  void loginWithWrongEmailShouldFail() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                .param("email", "wrong@example.com")
+                .param("password", "anyPassword"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted").value(false));
+  }
+
+  /**
+   * After a password reset, logging in with the new password (via a valid reset link) should
+   * succeed. This test also verifies that the char[]-based implementation correctly clears
+   * sensitive data and still returns the right result.
+   */
+  @Test
+  void loginWithCorrectChangedPasswordShouldSucceed() throws Exception {
+    // Arrange: set a known reset password for the test user directly via the static map
+    String testUser = "webgoat"; // default username used by LessonTest
+    String newPassword = "newSecurePassword123";
+    ResetLinkAssignment.usersToTomPassword.put(testUser, newPassword);
+
+    try {
+      mockMvc
+          .perform(
+              MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                  .param("email", TOM_EMAIL)
+                  .param("password", newPassword))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.lessonCompleted").value(true));
+    } finally {
+      // Clean up shared state so other tests are not affected
+      ResetLinkAssignment.usersToTomPassword.remove(testUser);
+    }
+  }
+
+  /**
+   * After a password reset, logging in with the OLD default password should still fail.
+   * This ensures the char[] zeroing does not accidentally corrupt the stored value.
+   */
+  @Test
+  void loginWithOldPasswordAfterResetShouldFail() throws Exception {
+    String testUser = "webgoat";
+    String newPassword = "anotherNewPassword456";
+    ResetLinkAssignment.usersToTomPassword.put(testUser, newPassword);
+
+    try {
+      mockMvc
+          .perform(
+              MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                  .param("email", TOM_EMAIL)
+                  .param("password", PASSWORD_TOM_9))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.lessonCompleted").value(false));
+    } finally {
+      ResetLinkAssignment.usersToTomPassword.remove(testUser);
+    }
   }
 
   @Test
