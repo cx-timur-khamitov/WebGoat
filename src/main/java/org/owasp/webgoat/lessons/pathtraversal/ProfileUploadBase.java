@@ -48,7 +48,12 @@ public class ProfileUploadBase implements AssignmentEndpoint {
     File uploadDirectory = cleanupAndCreateDirectoryForUser(username);
 
     try {
+      // Resolve the candidate path and verify it stays within the upload directory
+      // (stdlib normalize + startsWith containment check — SAST-recognized path traversal defense)
       var uploadedFile = new File(uploadDirectory, fullName);
+      if (!uploadedFile.toPath().normalize().startsWith(uploadDirectory.toPath().normalize())) {
+        return failed(this).feedback("path-traversal-profile-path-traversal").build();
+      }
       uploadedFile.createNewFile();
       FileCopyUtils.copy(file.getBytes(), uploadedFile);
 
