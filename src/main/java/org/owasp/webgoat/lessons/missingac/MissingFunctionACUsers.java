@@ -4,15 +4,12 @@
  */
 package org.owasp.webgoat.lessons.missingac;
 
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_ADMIN;
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_SIMPLE;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.owasp.webgoat.container.CurrentUsername;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -24,11 +21,22 @@ import org.springframework.web.servlet.ModelAndView;
 
 /** Created by jason on 1/5/17. */
 @Controller
-@AllArgsConstructor
 @Slf4j
 public class MissingFunctionACUsers {
 
   private final MissingAccessControlUserRepository userRepository;
+  // Salts loaded from external configuration; override via environment variables
+  private final String passwordSaltSimple;
+  private final String passwordSaltAdmin;
+
+  public MissingFunctionACUsers(
+      MissingAccessControlUserRepository userRepository,
+      @Value("${webgoat.password.salt.simple}") String passwordSaltSimple,
+      @Value("${webgoat.password.salt.admin}") String passwordSaltAdmin) {
+    this.userRepository = userRepository;
+    this.passwordSaltSimple = passwordSaltSimple;
+    this.passwordSaltAdmin = passwordSaltAdmin;
+  }
 
   @GetMapping(path = {"access-control/users"})
   public ModelAndView listUsers() {
@@ -40,7 +48,7 @@ public class MissingFunctionACUsers {
     // add display user objects in place of direct users
     List<DisplayUser> displayUsers = new ArrayList<>();
     for (User user : allUsers) {
-      displayUsers.add(new DisplayUser(user, PASSWORD_SALT_SIMPLE));
+      displayUsers.add(new DisplayUser(user, passwordSaltSimple));
     }
     model.addObject("allUsers", displayUsers);
 
@@ -54,7 +62,7 @@ public class MissingFunctionACUsers {
   public ResponseEntity<List<DisplayUser>> usersService() {
     return ResponseEntity.ok(
         userRepository.findAllUsers().stream()
-            .map(user -> new DisplayUser(user, PASSWORD_SALT_SIMPLE))
+            .map(user -> new DisplayUser(user, passwordSaltSimple))
             .collect(Collectors.toList()));
   }
 
@@ -67,7 +75,7 @@ public class MissingFunctionACUsers {
     if (currentUser != null && currentUser.isAdmin()) {
       return ResponseEntity.ok(
           userRepository.findAllUsers().stream()
-              .map(user -> new DisplayUser(user, PASSWORD_SALT_ADMIN))
+              .map(user -> new DisplayUser(user, passwordSaltAdmin))
               .collect(Collectors.toList()));
     }
     return ResponseEntity.status(HttpStatus.FORBIDDEN).build();

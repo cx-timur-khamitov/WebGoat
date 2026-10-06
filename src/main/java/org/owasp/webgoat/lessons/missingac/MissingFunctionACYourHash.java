@@ -6,11 +6,11 @@ package org.owasp.webgoat.lessons.missingac;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_SIMPLE;
 
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
 import org.owasp.webgoat.container.assignments.AttackResult;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,9 +26,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class MissingFunctionACYourHash implements AssignmentEndpoint {
 
   private final MissingAccessControlUserRepository userRepository;
+  // Salt loaded from external configuration; override via WEBGOAT_PASSWORD_SALT_SIMPLE env var
+  private final String passwordSaltSimple;
 
-  public MissingFunctionACYourHash(MissingAccessControlUserRepository userRepository) {
+  public MissingFunctionACYourHash(
+      MissingAccessControlUserRepository userRepository,
+      @Value("${webgoat.password.salt.simple}") String passwordSaltSimple) {
     this.userRepository = userRepository;
+    this.passwordSaltSimple = passwordSaltSimple;
   }
 
   @PostMapping(
@@ -37,7 +42,7 @@ public class MissingFunctionACYourHash implements AssignmentEndpoint {
   @ResponseBody
   public AttackResult simple(String userHash) {
     User user = userRepository.findByUsername("Jerry");
-    DisplayUser displayUser = new DisplayUser(user, PASSWORD_SALT_SIMPLE);
+    DisplayUser displayUser = new DisplayUser(user, passwordSaltSimple);
     if (userHash.equals(displayUser.getUserHash())) {
       return success(this).feedback("access-control.hash.success").build();
     } else {

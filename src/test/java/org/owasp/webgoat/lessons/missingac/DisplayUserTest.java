@@ -4,24 +4,25 @@
  */
 package org.owasp.webgoat.lessons.missingac;
 
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_SIMPLE;
-
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 class DisplayUserTest {
 
+  // Salt value used in test environment (mirrors application-webgoat-test.properties)
+  private static final String TEST_SALT_SIMPLE = "DeliberatelyInsecure1234";
+
   @Test
   void testDisplayUserCreation() {
     DisplayUser displayUser =
-        new DisplayUser(new User("user1", "password1", true), PASSWORD_SALT_SIMPLE);
+        new DisplayUser(new User("user1", "password1", true), TEST_SALT_SIMPLE);
     Assertions.assertThat(displayUser.isAdmin()).isTrue();
   }
 
   @Test
   void testDisplayUserHash() {
     DisplayUser displayUser =
-        new DisplayUser(new User("user1", "password1", false), PASSWORD_SALT_SIMPLE);
+        new DisplayUser(new User("user1", "password1", false), TEST_SALT_SIMPLE);
     Assertions.assertThat(displayUser.getUserHash())
         .isEqualTo("cplTjehjI/e5ajqTxWaXhU5NW9UotJfXj+gcbPvfWWc=");
   }
