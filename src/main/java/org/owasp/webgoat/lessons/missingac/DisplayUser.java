@@ -6,6 +6,7 @@ package org.owasp.webgoat.lessons.missingac;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.Base64;
 import lombok.Getter;
 
@@ -22,7 +23,12 @@ public class DisplayUser {
     this.admin = user.isAdmin();
 
     try {
-      this.userHash = genUserHash(user.getUsername(), user.getPassword(), passwordSalt);
+      // Generate a cryptographically random per-instance salt (16 bytes = 128 bits)
+      SecureRandom secureRandom = new SecureRandom();
+      byte[] randomSaltBytes = new byte[16];
+      secureRandom.nextBytes(randomSaltBytes);
+      String randomSalt = Base64.getEncoder().encodeToString(randomSaltBytes);
+      this.userHash = genUserHash(user.getUsername(), user.getPassword(), randomSalt);
     } catch (Exception ex) {
       this.userHash = "Error generating user hash";
     }
@@ -31,9 +37,8 @@ public class DisplayUser {
   protected String genUserHash(String username, String password, String passwordSalt)
       throws Exception {
     MessageDigest md = MessageDigest.getInstance("SHA-256");
-    // salting is good, but static & too predictable ... short too for a salt
+    // Use the provided salt (should be a cryptographically random, per-invocation value)
     String salted = password + passwordSalt + username;
-    // md.update(salted.getBytes("UTF-8")); // Change this to "UTF-16" if needed
     byte[] hash = md.digest(salted.getBytes(StandardCharsets.UTF_8));
     return Base64.getEncoder().encodeToString(hash);
   }
