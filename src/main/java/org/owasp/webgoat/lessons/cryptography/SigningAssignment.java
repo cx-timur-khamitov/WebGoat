@@ -34,17 +34,23 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 public class SigningAssignment implements AssignmentEndpoint {
 
+  /** Session attribute key for storing the RSA key pair generated per user session. */
+  static final String SESSION_ATTR_KEY_PAIR = "signingAssignmentKeyPair";
+
+  /** Session attribute key for storing the PEM-encoded private key string. */
+  static final String SESSION_ATTR_PRIVATE_KEY = "signingAssignmentPrivateKeyString";
+
   @RequestMapping(path = "/crypto/signing/getprivate", produces = MediaType.TEXT_HTML_VALUE)
   @ResponseBody
   public String getPrivateKey(HttpServletRequest request)
       throws NoSuchAlgorithmException, InvalidAlgorithmParameterException {
 
-    String privateKey = (String) request.getSession().getAttribute("privateKeyString");
+    String privateKey = (String) request.getSession().getAttribute(SESSION_ATTR_PRIVATE_KEY);
     if (privateKey == null) {
       KeyPair keyPair = CryptoUtil.generateKeyPair();
       privateKey = CryptoUtil.getPrivateKeyInPEM(keyPair);
-      request.getSession().setAttribute("privateKeyString", privateKey);
-      request.getSession().setAttribute("keyPair", keyPair);
+      request.getSession().setAttribute(SESSION_ATTR_PRIVATE_KEY, privateKey);
+      request.getSession().setAttribute(SESSION_ATTR_KEY_PAIR, keyPair);
     }
     return privateKey;
   }
@@ -56,7 +62,7 @@ public class SigningAssignment implements AssignmentEndpoint {
 
     String tempModulus =
         modulus; /* used to validate the modulus of the public key but might need to be corrected */
-    KeyPair keyPair = (KeyPair) request.getSession().getAttribute("keyPair");
+    KeyPair keyPair = (KeyPair) request.getSession().getAttribute(SESSION_ATTR_KEY_PAIR);
     RSAPublicKey rsaPubKey = (RSAPublicKey) keyPair.getPublic();
     if (tempModulus.length() == 512) {
       tempModulus = "00".concat(tempModulus);
