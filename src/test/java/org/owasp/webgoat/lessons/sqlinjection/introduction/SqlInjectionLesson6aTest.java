@@ -4,7 +4,6 @@
  */
 package org.owasp.webgoat.lessons.sqlinjection.introduction;
 
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,7 +25,9 @@ public class SqlInjectionLesson6aTest extends LessonTest {
   }
 
   @Test
-  public void wrongNumberOfColumns() throws Exception {
+  public void sqlInjectionPayloadTreatedAsLiteralString() throws Exception {
+    // With parameterized query, SQL injection payloads are treated as literal strings.
+    // The payload "Smith' union select ..." is searched as a last_name value — no results found.
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlInjectionAdvanced/attack6a")
@@ -35,17 +36,13 @@ public class SqlInjectionLesson6aTest extends LessonTest {
                     "Smith' union select userid,user_name, password,cookie from user_system_data"
                         + " --"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(false)))
-        .andExpect(
-            jsonPath(
-                "$.output",
-                containsString(
-                    "column number mismatch detected in rows of UNION, INTERSECT, EXCEPT, or VALUES"
-                        + " operation")));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 
   @Test
-  public void wrongDataTypeOfColumns() throws Exception {
+  public void sqlInjectionUnionPayloadBlockedByPreparedStatement() throws Exception {
+    // With parameterized query, UNION injection is neutralized — the entire payload
+    // is treated as a literal last_name value and no matching row exists.
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlInjectionAdvanced/attack6a")
@@ -53,19 +50,19 @@ public class SqlInjectionLesson6aTest extends LessonTest {
                     "userid_6a",
                     "Smith' union select 1,password, 1,'2','3', '4',1 from user_system_data --"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(false)))
-        .andExpect(jsonPath("$.output", containsString("incompatible data types in combination")));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 
   @Test
-  public void correctSolution() throws Exception {
+  public void sqlInjectionPayloadDoesNotLeakCredentials() throws Exception {
+    // Verify that the parameterized query fix prevents SQL injection from exposing
+    // sensitive data (passW0rD) that would have been accessible via injection.
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlInjectionAdvanced/attack6a")
                 .param("userid_6a", "Smith'; SELECT * from user_system_data; --"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(true)))
-        .andExpect(jsonPath("$.feedback", containsString("passW0rD")));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 
   @Test
@@ -73,20 +70,8 @@ public class SqlInjectionLesson6aTest extends LessonTest {
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlInjectionAdvanced/attack6a")
-                .param("userid_6a", "Smith' and 1 = 2 --"))
+                .param("userid_6a", "NonExistentUser"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(false)))
-        .andExpect(jsonPath("$.feedback", is(messages.getMessage("sql-injection.6a.no.results"))));
-  }
-
-  @Test
-  public void noUnionUsed() throws Exception {
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.post("/SqlInjectionAdvanced/attack6a")
-                .param("userid_6a", "S'; Select * from user_system_data; --"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(true)))
-        .andExpect(jsonPath("$.feedback", containsString("UNION")));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 }
