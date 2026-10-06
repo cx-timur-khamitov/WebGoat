@@ -59,4 +59,51 @@ class ProfileUploadRemoveUserInputTest extends LessonTest {
                 CoreMatchers.containsString("test\\" + File.separator + "picture.jpg")))
         .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
   }
+
+  /**
+   * Verifies that a filename with a relative path traversal sequence (../name) is blocked
+   * by the containment check added to ProfileUploadBase.execute().
+   * The fix uses Path.normalize().startsWith() to reject any resolved path that escapes
+   * the user's upload directory.
+   */
+  @Test
+  void pathTraversalViaOriginalFilenameIsBlocked() throws Exception {
+    // Attacker crafts a multipart upload whose original filename contains "../"
+    var maliciousFile =
+        new MockMultipartFile(
+            "uploadedFileRemoveUserInput",
+            "../malicious.jpg",
+            "text/plain",
+            "malicious content".getBytes());
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.multipart("/PathTraversal/profile-upload-remove-user-input")
+                .file(maliciousFile))
+        .andExpect(status().is(200))
+        // The containment check must reject the traversal attempt — lesson must NOT be completed
+        // and the response must indicate failure, not a successful upload
+        .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+  }
+
+  /**
+   * Verifies that a deeply nested path traversal (../../.. sequence) in the original filename
+   * is also rejected by the containment check.
+   */
+  @Test
+  void deepPathTraversalViaOriginalFilenameIsBlocked() throws Exception {
+    var maliciousFile =
+        new MockMultipartFile(
+            "uploadedFileRemoveUserInput",
+            "../../etc/passwd",
+            "text/plain",
+            "root:x:0:0".getBytes());
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.multipart("/PathTraversal/profile-upload-remove-user-input")
+                .file(maliciousFile))
+        .andExpect(status().is(200))
+        .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+  }
 }
