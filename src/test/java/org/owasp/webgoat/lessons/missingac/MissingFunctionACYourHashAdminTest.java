@@ -4,7 +4,6 @@
  */
 package org.owasp.webgoat.lessons.missingac;
 
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_ADMIN;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -12,10 +11,16 @@ import org.hamcrest.CoreMatchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.owasp.webgoat.container.plugins.LessonTest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class MissingFunctionACYourHashAdminTest extends LessonTest {
+
+  // Inject the admin salt from test properties so the test is not coupled to
+  // a hardcoded secret — the value comes from application-webgoat-test.properties.
+  @Value("${webgoat.missingac.salt.admin}")
+  private String passwordSaltAdmin;
 
   @BeforeEach
   public void setup() {
@@ -25,7 +30,7 @@ class MissingFunctionACYourHashAdminTest extends LessonTest {
   @Test
   void solve() throws Exception {
     var userHash =
-        new DisplayUser(new User("Jerry", "doesnotreallymatter", true), PASSWORD_SALT_ADMIN)
+        new DisplayUser(new User("Jerry", "doesnotreallymatter", true), passwordSaltAdmin)
             .getUserHash();
     mockMvc
         .perform(
