@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -67,12 +68,20 @@ public class ProfileUploadBase implements AssignmentEndpoint {
 
   @SneakyThrows
   protected File cleanupAndCreateDirectoryForUser(String username) {
-    var uploadDirectory = new File(this.webGoatHomeDirectory, "/PathTraversal/" + username);
-    if (uploadDirectory.exists()) {
-      FileSystemUtils.deleteRecursively(uploadDirectory);
+    // Resolve the base directory for all PathTraversal uploads
+    Path baseDirectory = new File(this.webGoatHomeDirectory, "/PathTraversal").toPath().normalize();
+    // Resolve the user-specific subdirectory and normalize to eliminate any ".." sequences
+    Path uploadDirectory = baseDirectory.resolve(username).normalize();
+    // Containment check: ensure the resolved path is within the expected base directory
+    if (!uploadDirectory.startsWith(baseDirectory)) {
+      throw new SecurityException("Path traversal attempt detected for username: " + username);
     }
-    Files.createDirectories(uploadDirectory.toPath());
-    return uploadDirectory;
+    File uploadDirectoryFile = uploadDirectory.toFile();
+    if (uploadDirectoryFile.exists()) {
+      FileSystemUtils.deleteRecursively(uploadDirectoryFile);
+    }
+    Files.createDirectories(uploadDirectory);
+    return uploadDirectoryFile;
   }
 
   private boolean attemptWasMade(File expectedUploadDirectory, File uploadedFile)
