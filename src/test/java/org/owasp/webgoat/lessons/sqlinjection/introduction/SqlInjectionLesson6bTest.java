@@ -33,4 +33,33 @@ public class SqlInjectionLesson6bTest extends LessonTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
+
+  /**
+   * Regression test for CWE-259: Verifies that the previously hardcoded fallback password
+   * "dave" (the username, not a valid password) does NOT grant access. Before the fix,
+   * getPassword() defaulted to "dave" when the DB was unavailable, allowing trivial bypass.
+   */
+  @Test
+  public void hardcodedFallbackPasswordIsRejected() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/SqlInjectionAdvanced/attack6b")
+                .param("userid_6b", "dave"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
+
+  /**
+   * Verifies that an empty string does not authenticate successfully, ensuring
+   * the null fallback from the fixed getPassword() cannot be matched by an empty input.
+   */
+  @Test
+  public void emptyPasswordIsRejected() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/SqlInjectionAdvanced/attack6b")
+                .param("userid_6b", ""))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
 }
