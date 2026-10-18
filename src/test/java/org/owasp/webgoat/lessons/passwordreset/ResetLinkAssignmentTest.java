@@ -4,7 +4,10 @@
  */
 package org.owasp.webgoat.lessons.passwordreset;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.owasp.webgoat.lessons.passwordreset.ResetLinkAssignment.TOM_EMAIL;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
@@ -27,6 +30,11 @@ class ResetLinkAssignmentTest extends LessonTest {
 
   @Value("${webwolf.port}")
   private String webWolfPort;
+
+  @Value("${webgoat.lesson.passwordreset.tom_password}")
+  private String configuredTomPassword;
+
+  @Autowired private ResetLinkAssignment resetLinkAssignment;
 
   @Autowired private ResourceLoader resourceLoader;
 
@@ -72,6 +80,59 @@ class ResetLinkAssignmentTest extends LessonTest {
             .andReturn();
     Assertions.assertThat(resourceLoader.getResource(mvcResult.getModelAndView().getViewName()))
         .isNotNull();
+  }
+
+  /** Verify that the password is loaded from configuration rather than hardcoded in source. */
+  @Test
+  void tomPasswordShouldBeInjectedFromConfiguration() {
+    // The password must be provided by @Value injection from properties, not a compile-time literal
+    assertThat(resetLinkAssignment.passwordTom9).isNotNull().isNotEmpty();
+    // Confirm the injected value matches the configured property
+    assertThat(resetLinkAssignment.passwordTom9).isEqualTo(configuredTomPassword);
+  }
+
+  /**
+   * Logging in with Tom's original (unchanged) password should fail — the lesson requires the
+   * student to change Tom's password via the reset link first.
+   */
+  @Test
+  void loginWithOriginalTomPasswordShouldFail() throws Exception {
+    // Clear any stored password overrides so we test the default (injected) password path
+    ResetLinkAssignment.usersToTomPassword.clear();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                .param("email", TOM_EMAIL)
+                .param("password", configuredTomPassword))
+        .andExpect(status().isOk())
+        .andExpect(content().string(containsString("login_failed")));
+  }
+
+  /** Logging in with a wrong password should fail. */
+  @Test
+  void loginWithWrongPasswordShouldFail() throws Exception {
+    ResetLinkAssignment.usersToTomPassword.clear();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                .param("email", TOM_EMAIL)
+                .param("password", "wrongPassword"))
+        .andExpect(status().isOk())
+        .andExpect(content().string(containsString("login_failed")));
+  }
+
+  /** Logging in with a non-Tom email should fail regardless of password. */
+  @Test
+  void loginWithNonTomEmailShouldFail() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                .param("email", "other@example.com")
+                .param("password", "anyPassword"))
+        .andExpect(status().isOk())
+        .andExpect(content().string(containsString("login_failed")));
   }
 
   @Test
