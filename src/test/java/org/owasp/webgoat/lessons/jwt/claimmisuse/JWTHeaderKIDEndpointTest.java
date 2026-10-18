@@ -30,23 +30,87 @@ public class JWTHeaderKIDEndpointTest extends LessonTest {
     this.mockMvc = MockMvcBuilders.webAppContextSetup(this.wac).build();
   }
 
+  /**
+   * Verifies that a SQL injection payload in the JWT 'kid' header no longer bypasses
+   * authentication after the fix to use a parameterized PreparedStatement.
+   *
+   * Before the fix, a crafted kid such as:
+   *   hacked' UNION select 'deletingTom' from INFORMATION_SCHEMA.SYSTEM_USERS --
+   * would inject a UNION clause into the query, allowing an attacker to supply any
+   * arbitrary key value.  With the parameterized query the entire string is treated
+   * as a literal lookup value; no row is found, the JWT signature cannot be verified,
+   * and the request is rejected.
+   */
   @Test
-  public void solveAssignment() throws Exception {
+  public void sqlInjectionInKidHeaderShouldBeRejected() throws Exception {
+    String injectedKid = "hacked' UNION select 'deletingTom' from INFORMATION_SCHEMA.SYSTEM_USERS --";
     String key = "deletingTom";
     Map<String, Object> claims = new HashMap<>();
     claims.put("username", "Tom");
     String token =
         Jwts.builder()
-            .setHeaderParam(
-                "kid", "hacked' UNION select '" + key + "' from INFORMATION_SCHEMA.SYSTEM_USERS --")
+            .setHeaderParam("kid", injectedKid)
             .setIssuedAt(new Date(System.currentTimeMillis() + TimeUnit.DAYS.toDays(10)))
             .setClaims(claims)
             .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, key)
             .compact();
+
+    // The parameterized query treats the injection payload as a plain string; no matching
+    // key is found in jwt_keys, so JWT signature verification fails and the request must
+    // be rejected (lessonCompleted must be false).
     mockMvc
         .perform(MockMvcRequestBuilders.post("/JWT/kid/delete").param("token", token).content(""))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(true)));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
+
+  /**
+   * Verifies that a token with a kid containing only SQL metacharacters (single-quote,
+   * double-dash comment sequence) does not cause a SQL error or succeed with
+   * authentication.  With a PreparedStatement the payload is harmless.
+   */
+  @Test
+  public void kidWithSqlMetacharactersShouldNotCauseSqlError() throws Exception {
+    String maliciousKid = "'; DROP TABLE jwt_keys; --";
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("username", "Tom");
+    String token =
+        Jwts.builder()
+            .setHeaderParam("kid", maliciousKid)
+            .setIssuedAt(new Date(System.currentTimeMillis() + TimeUnit.DAYS.toDays(10)))
+            .setClaims(claims)
+            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, "somekey")
+            .compact();
+
+    // The server should not return a 500 / SQL error; it should return 200 with a
+    // jwt-invalid-token feedback message (key not found → signature verification fails).
+    mockMvc
+        .perform(MockMvcRequestBuilders.post("/JWT/kid/delete").param("token", token).content(""))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
+
+  /**
+   * A UNION-based injection attempting to retrieve data from another table must
+   * also be blocked after the fix.
+   */
+  @Test
+  public void unionBasedInjectionInKidShouldNotSucceed() throws Exception {
+    String unionPayload = "x' UNION SELECT password FROM users WHERE '1'='1";
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("username", "Tom");
+    String token =
+        Jwts.builder()
+            .setHeaderParam("kid", unionPayload)
+            .setIssuedAt(new Date(System.currentTimeMillis() + TimeUnit.DAYS.toDays(10)))
+            .setClaims(claims)
+            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, "anykey")
+            .compact();
+
+    mockMvc
+        .perform(MockMvcRequestBuilders.post("/JWT/kid/delete").param("token", token).content(""))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 
   @Test
@@ -67,6 +131,16 @@ public class JWTHeaderKIDEndpointTest extends LessonTest {
             MockMvcRequestBuilders.post("/JWT/kid/delete")
                 .param("token", ".eyJ1c2VybmFtZSI6IlRvbSJ9.")
                 .content(""))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("jwt-invalid-token"))));
+  }
+
+  @Test
+  public void emptyTokenShouldReturnInvalidTokenFeedback() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/kid/delete").param("token", "").content(""))
         .andExpect(status().isOk())
         .andExpect(
             jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("jwt-invalid-token"))));
