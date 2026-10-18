@@ -129,6 +129,87 @@ class FileServerTest {
         .andExpect(model().attributeDoesNotExist("uploadSuccess", "uploadFailed"));
   }
 
+  // ---- Path traversal security tests ----
+
+  @Test
+  @DisplayName("A username with path traversal sequences must NOT escape the file server root")
+  void shouldRejectPathTraversalInUsername() throws Exception {
+    // Simulate a principal whose getName() returns a traversal payload such as "../evil".
+    // The fix resolves+normalises the path and rejects it when it escapes fileLocation.
+    var maliciousAuth =
+        new UsernamePasswordAuthenticationToken("../evil", "n/a");
+
+    mockMvc
+        .perform(multipart("/fileupload").file(testFile()).principal(maliciousAuth))
+        .andExpect(status().is3xxRedirection())
+        // Traversal is silently treated as "nothing to upload" — no file must be written
+        .andExpect(redirectedUrl("files?uploadSuccess=Nothing+to+upload"));
+
+    // Confirm that no file was written outside (or inside) the temp directory under the
+    // traversal path.
+    try (var walk = Files.walk(fileServerLocation)) {
+      Assertions.assertThat(walk.filter(Files::isRegularFile).toList()).isEmpty();
+    }
+  }
+
+  @Test
+  @DisplayName("A deeply nested traversal username must also be rejected")
+  void shouldRejectDeepPathTraversalInUsername() throws Exception {
+    var maliciousAuth =
+        new UsernamePasswordAuthenticationToken("../../../../../../etc/passwd", "n/a");
+
+    mockMvc
+        .perform(multipart("/fileupload").file(testFile()).principal(maliciousAuth))
+        .andExpect(status().is3xxRedirection())
+        .andExpect(redirectedUrl("files?uploadSuccess=Nothing+to+upload"));
+
+    try (var walk = Files.walk(fileServerLocation)) {
+      Assertions.assertThat(walk.filter(Files::isRegularFile).toList()).isEmpty();
+    }
+  }
+
+  @Test
+  @DisplayName("A legitimate username still stores the uploaded file under its own sub-directory")
+  void shouldStoreFileForLegitimateUsername() throws Exception {
+    mockMvc
+        .perform(multipart("/fileupload").file(testFile()).principal(AUTHENTICATION))
+        .andExpect(status().is3xxRedirection())
+        .andExpect(redirectedUrl("files?uploadSuccess=File+uploaded+successful"));
+
+    Path expected = fileServerLocation.resolve(USERNAME).resolve("test.txt");
+    Assertions.assertThat(expected).exists().hasContent("test");
+
+    // The file must not have been placed outside the user's own directory
+    Assertions.assertThat(expected.toAbsolutePath().normalize())
+        .startsWith(fileServerLocation.toAbsolutePath().normalize());
+  }
+
+  @Test
+  @DisplayName("Username with encoded traversal sequences must not escape the file server root")
+  void shouldRejectEncodedPathTraversalInUsername() throws Exception {
+    // Some path traversal payloads use URL-decoded sequences.  The fix normalises the path
+    // after OS-level resolution, so any disguised traversal is caught at that stage.
+    var maliciousAuth =
+        new UsernamePasswordAuthenticationToken("..%2Fevil", "n/a");
+
+    // Path.resolve() treats the raw string; after normalize() any remaining ".." segments
+    // that escape the base will be caught by the startsWith() guard.
+    mockMvc
+        .perform(multipart("/fileupload").file(testFile()).principal(maliciousAuth))
+        .andExpect(status().is3xxRedirection());
+
+    // Whatever the response, no file must have escaped fileServerLocation.
+    try (var walk = Files.walk(fileServerLocation)) {
+      walk.filter(Files::isRegularFile)
+          .forEach(
+              p ->
+                  Assertions.assertThat(p.toAbsolutePath().normalize())
+                      .startsWith(fileServerLocation.toAbsolutePath().normalize()));
+    }
+  }
+
+  // ---- end of security tests ----
+
   private Path userDirectory() {
     return fileServerLocation.resolve(USERNAME);
   }
