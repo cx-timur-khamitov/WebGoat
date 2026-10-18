@@ -8,6 +8,9 @@ import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
+import java.util.Base64;
 import org.dummy.insecure.framework.VulnerableTaskHolder;
 import org.hamcrest.CoreMatchers;
 import org.junit.jupiter.api.Test;
@@ -93,6 +96,49 @@ class DeserializeTest extends LessonTest {
             jsonPath(
                 "$.feedback",
                 CoreMatchers.is(messages.getMessage("insecure-deserialization.stringobject"))))
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
+
+  /**
+   * Security regression test: verifies that the ObjectInputFilter allowlist rejects serialized
+   * objects whose class is NOT in the permitted list (CWE-502 fix).
+   *
+   * <p>A gadget-chain payload would typically embed a disallowed class. Here we use
+   * java.util.HashMap as a stand-in for an arbitrary/gadget class that must be rejected.
+   * The allowlist filter should cause readObject() to throw an exception, and the endpoint
+   * must return a failure response rather than deserializing the object.
+   */
+  @Test
+  void disallowedClassIsRejectedByFilter() throws Exception {
+    // Serialize a java.util.HashMap — a class that is NOT in the allowlist.
+    // This simulates a gadget-chain payload using a class outside the permitted set.
+    java.util.HashMap<String, String> disallowedObject = new java.util.HashMap<>();
+    disallowedObject.put("attack", "payload");
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    try (ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+      oos.writeObject(disallowedObject);
+    }
+    String token = Base64.getEncoder().encodeToString(baos.toByteArray());
+
+    // The filter must reject this class — the endpoint must NOT succeed.
+    mockMvc
+        .perform(MockMvcRequestBuilders.post("/InsecureDeserialization/task").param("token", token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
+
+  /**
+   * Security regression test: verifies that a completely invalid (non-serialized) payload
+   * does not cause an unhandled error and is rejected gracefully.
+   */
+  @Test
+  void invalidSerializedPayloadIsRejected() throws Exception {
+    // Raw bytes that are not a valid Java serialized stream (missing magic bytes 0xACED).
+    String token = Base64.getEncoder().encodeToString("not-a-serialized-object".getBytes());
+
+    mockMvc
+        .perform(MockMvcRequestBuilders.post("/InsecureDeserialization/task").param("token", token))
+        .andExpect(status().isOk())
         .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 }
