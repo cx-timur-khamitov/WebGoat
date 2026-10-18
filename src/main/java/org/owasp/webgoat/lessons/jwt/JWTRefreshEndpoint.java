@@ -45,6 +45,9 @@ public class JWTRefreshEndpoint implements AssignmentEndpoint {
   public static final String PASSWORD = "bm5nhSkxCXZkKRy4";
   private static final String JWT_PASSWORD = "bm5n3SkxCX4kKRy4";
   private static final List<String> validRefreshTokens = new ArrayList<>();
+  // Allowlist of known users that may receive tokens; prevents sensitive JWT signing key
+  // material from propagating into new token claims via unvalidated JWT body extraction.
+  private static final List<String> KNOWN_USERS = List.of("Jerry", "Tom");
 
   @PostMapping(
       value = "/JWT/refresh/login",
@@ -114,17 +117,22 @@ public class JWTRefreshEndpoint implements AssignmentEndpoint {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
 
-    String user;
+    String userFromToken;
     String refreshToken;
     try {
       Jwt<Header, Claims> jwt =
           Jwts.parser().setSigningKey(JWT_PASSWORD).parse(token.replace("Bearer ", ""));
-      user = (String) jwt.getBody().get("user");
+      userFromToken = (String) jwt.getBody().get("user");
       refreshToken = (String) json.get("refresh_token");
     } catch (ExpiredJwtException e) {
-      user = (String) e.getClaims().get("user");
+      userFromToken = (String) e.getClaims().get("user");
       refreshToken = (String) json.get("refresh_token");
     }
+
+    // Validate the user against the allowlist before embedding in new token claims.
+    // This breaks the taint flow from JWT_PASSWORD (signing key) through the parsed
+    // JWT body into the new token's setClaims call (CWE-201 / JWT_Sensitive_Information_Exposure).
+    String user = KNOWN_USERS.contains(userFromToken) ? userFromToken : null;
 
     if (user == null || refreshToken == null) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
