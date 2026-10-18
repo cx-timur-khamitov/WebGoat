@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.ModelAndView;
+import org.springframework.web.util.HtmlUtils;
 
 @RestController
 public class LandingAssignment implements AssignmentEndpoint {
@@ -40,7 +41,9 @@ public class LandingAssignment implements AssignmentEndpoint {
     ModelAndView modelAndView = new ModelAndView();
     modelAndView.addObject(
         "webwolfLandingPageUrl", landingPageUrl.replace("//landing", "/landing"));
-    modelAndView.addObject("uniqueCode", StringUtils.reverse(username));
+    // HTML-encode the username before use to prevent Reflected XSS (CWE-79)
+    String safeUsername = HtmlUtils.htmlEscape(username);
+    modelAndView.addObject("uniqueCode", StringUtils.reverse(safeUsername));
 
     modelAndView.setViewName("lessons/webwolfintroduction/templates/webwolfPasswordReset.html");
     return modelAndView;
