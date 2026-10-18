@@ -159,23 +159,31 @@ public class AdminController {
   @PostMapping("/users/{username}/reset-password")
   @PreAuthorize("hasAuthority('WEBGOAT_ADMIN')")
   public ResponseEntity<PasswordResetResponse> resetPassword(@PathVariable String username) {
-    String tempPassword = generateTemporaryPassword();
+    // Use char[] so the plaintext password can be explicitly zeroed from memory
+    // after use, reducing the window during which a heap inspection attack could
+    // recover the credential (CWE-244).
+    char[] tempPassword = generateTemporaryPassword();
     try {
-      userService.resetPassword(username, tempPassword);
+      userService.resetPassword(username, new String(tempPassword));
+      // Return a response built from the char[] before zeroing it
+      PasswordResetResponse response = new PasswordResetResponse(username, new String(tempPassword));
+      return ResponseEntity.ok(response);
     } catch (Exception e) {
       return ResponseEntity.notFound().build();
+    } finally {
+      // Zero the char[] to limit the time the plaintext password lives in memory
+      java.util.Arrays.fill(tempPassword, '\0');
     }
-    return ResponseEntity.ok(new PasswordResetResponse(username, tempPassword));
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  private static String generateTemporaryPassword() {
-    StringBuilder sb = new StringBuilder(TEMP_PASSWORD_LENGTH);
+  static char[] generateTemporaryPassword() {
+    char[] password = new char[TEMP_PASSWORD_LENGTH];
     for (int i = 0; i < TEMP_PASSWORD_LENGTH; i++) {
-      sb.append(CHARS.charAt(SECURE_RANDOM.nextInt(CHARS.length())));
+      password[i] = CHARS.charAt(SECURE_RANDOM.nextInt(CHARS.length()));
     }
-    return sb.toString();
+    return password;
   }
 
   // ── DTOs ───────────────────────────────────────────────────────────────────
