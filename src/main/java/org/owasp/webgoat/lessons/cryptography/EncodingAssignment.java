@@ -8,6 +8,7 @@ import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Random;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
@@ -22,8 +23,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class EncodingAssignment implements AssignmentEndpoint {
 
-  public static String getBasicAuth(String username, String password) {
-    return Base64.getEncoder().encodeToString(username.concat(":").concat(password).getBytes());
+  public static String getBasicAuth(String username, char[] password) {
+    String credentials = username + ":" + new String(password);
+    String encoded = Base64.getEncoder().encodeToString(credentials.getBytes());
+    return encoded;
   }
 
   @GetMapping(path = "/crypto/encoding/basic", produces = MediaType.TEXT_HTML_VALUE)
@@ -33,10 +36,18 @@ public class EncodingAssignment implements AssignmentEndpoint {
     String basicAuth = (String) request.getSession().getAttribute("basicAuth");
     String username = request.getUserPrincipal().getName();
     if (basicAuth == null) {
-      String password =
-          HashingAssignment.SECRETS[new Random().nextInt(HashingAssignment.SECRETS.length)];
-      basicAuth = getBasicAuth(username, password);
-      request.getSession().setAttribute("basicAuth", basicAuth);
+      // Use char[] for the password so it can be explicitly zeroed after use,
+      // preventing heap inspection (CWE-244).
+      char[] password =
+          HashingAssignment.SECRETS[new Random().nextInt(HashingAssignment.SECRETS.length)]
+              .toCharArray();
+      try {
+        basicAuth = getBasicAuth(username, password);
+        request.getSession().setAttribute("basicAuth", basicAuth);
+      } finally {
+        // Clear the password from memory immediately after use.
+        Arrays.fill(password, '\0');
+      }
     }
     return "Authorization: Basic ".concat(basicAuth);
   }
@@ -48,13 +59,17 @@ public class EncodingAssignment implements AssignmentEndpoint {
       @RequestParam String answer_user,
       @RequestParam String answer_pwd) {
     String basicAuth = (String) request.getSession().getAttribute("basicAuth");
-    if (basicAuth != null
-        && answer_user != null
-        && answer_pwd != null
-        && basicAuth.equals(getBasicAuth(answer_user, answer_pwd))) {
-      return success(this).feedback("crypto-encoding.success").build();
-    } else {
-      return failed(this).feedback("crypto-encoding.empty").build();
+    if (basicAuth != null && answer_user != null && answer_pwd != null) {
+      // Convert the answer password to char[] so it can be cleared after use (CWE-244).
+      char[] answerPwdChars = answer_pwd.toCharArray();
+      try {
+        if (basicAuth.equals(getBasicAuth(answer_user, answerPwdChars))) {
+          return success(this).feedback("crypto-encoding.success").build();
+        }
+      } finally {
+        Arrays.fill(answerPwdChars, '\0');
+      }
     }
+    return failed(this).feedback("crypto-encoding.empty").build();
   }
 }
