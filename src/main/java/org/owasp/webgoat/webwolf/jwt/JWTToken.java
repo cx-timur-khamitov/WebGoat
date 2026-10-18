@@ -51,13 +51,22 @@ public class JWTToken {
     return decode(jwt, secretKey, null);
   }
 
-  public static JWTToken decode(String jwt, String secretKey, String jwksJson) {
+  public static JWTToken decode(String jwt, char[] secretKey, String jwksJson) {
     var cleanedToken = jwt.trim().replace(System.getProperty("line.separator"), "");
     var token = parseToken(cleanedToken);
     return token
         .toBuilder()
         .signatureValid(validateSignature(secretKey, jwksJson, cleanedToken))
         .build();
+  }
+
+  public static JWTToken decode(String jwt, String secretKey, String jwksJson) {
+    char[] keyChars = secretKey != null ? secretKey.toCharArray() : new char[0];
+    try {
+      return decode(jwt, keyChars, jwksJson);
+    } finally {
+      java.util.Arrays.fill(keyChars, '\0');
+    }
   }
 
   private static Map<String, Object> parse(String header) {
@@ -82,6 +91,15 @@ public class JWTToken {
   }
 
   public static JWTToken encode(String header, String payloadAsString, String secretKey) {
+    char[] keyChars = secretKey != null ? secretKey.toCharArray() : new char[0];
+    try {
+      return encode(header, payloadAsString, keyChars);
+    } finally {
+      java.util.Arrays.fill(keyChars, '\0');
+    }
+  }
+
+  public static JWTToken encode(String header, String payloadAsString, char[] secretKey) {
     var headers = parse(header);
     var payload = parse(payloadAsString);
 
@@ -103,14 +121,18 @@ public class JWTToken {
     }
 
     // Only sign when valid header and payload
-    if (!headers.isEmpty() && !payload.isEmpty() && hasText(secretKey)) {
+    if (!headers.isEmpty() && !payload.isEmpty() && secretKey != null && secretKey.length > 0) {
       jws.setDoKeyValidation(false);
-      jws.setKey(new HmacKey(secretKey.getBytes(UTF_8)));
+      // Convert char[] to byte[] using UTF-8 encoding for signing, then zero out the byte array
+      byte[] keyBytes = new String(secretKey).getBytes(UTF_8);
       try {
+        jws.setKey(new HmacKey(keyBytes));
         builder.encoded(jws.getCompactSerialization());
         builder.signatureValid(true);
       } catch (JoseException e) {
         // Do nothing
+      } finally {
+        java.util.Arrays.fill(keyBytes, (byte) 0);
       }
     }
     return builder.build();
@@ -136,8 +158,8 @@ public class JWTToken {
     return builder.build();
   }
 
-  private static boolean validateSignature(String secretKey, String jwksJson, String jwt) {
-    if (hasText(secretKey)) {
+  private static boolean validateSignature(char[] secretKey, String jwksJson, String jwt) {
+    if (secretKey != null && secretKey.length > 0) {
       return validateWithSharedSecret(secretKey, jwt);
     }
     if (hasText(jwksJson)) {
@@ -146,18 +168,24 @@ public class JWTToken {
     return false;
   }
 
-  private static boolean validateWithSharedSecret(String secretKey, String jwt) {
-    JwtConsumer jwtConsumer =
-        new JwtConsumerBuilder()
-            .setSkipAllValidators()
-            .setVerificationKey(new HmacKey(secretKey.getBytes(UTF_8)))
-            .setRelaxVerificationKeyValidation()
-            .build();
+  private static boolean validateWithSharedSecret(char[] secretKey, String jwt) {
+    // Convert char[] to byte[] using UTF-8, then zero it out after use (CWE-244)
+    byte[] keyBytes = new String(secretKey).getBytes(UTF_8);
     try {
-      jwtConsumer.processToClaims(jwt);
-      return true;
-    } catch (InvalidJwtException e) {
-      return false;
+      JwtConsumer jwtConsumer =
+          new JwtConsumerBuilder()
+              .setSkipAllValidators()
+              .setVerificationKey(new HmacKey(keyBytes))
+              .setRelaxVerificationKeyValidation()
+              .build();
+      try {
+        jwtConsumer.processToClaims(jwt);
+        return true;
+      } catch (InvalidJwtException e) {
+        return false;
+      }
+    } finally {
+      java.util.Arrays.fill(keyBytes, (byte) 0);
     }
   }
 
