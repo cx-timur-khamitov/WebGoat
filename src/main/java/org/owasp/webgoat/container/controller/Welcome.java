@@ -29,6 +29,10 @@ public class Welcome {
     // send them to the welcome page
     HttpSession session = request.getSession();
     if (session.getAttribute(WELCOMED) == null) {
+      // Invalidate the existing session ID and assign a new one to prevent session fixation
+      // attacks (CWE-384). changeSessionId() retains all session attributes while rotating
+      // the session token, so an attacker who planted a session ID before login cannot reuse it.
+      request.changeSessionId();
       session.setAttribute(WELCOMED, "true");
     }
 
