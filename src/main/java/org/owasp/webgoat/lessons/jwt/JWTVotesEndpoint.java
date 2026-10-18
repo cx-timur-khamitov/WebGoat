@@ -174,8 +174,9 @@ public class JWTVotesEndpoint implements AssignmentEndpoint {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     } else {
       try {
-        Jwt jwt = Jwts.parser().setSigningKey(JWT_PASSWORD).parse(accessToken);
-        Claims claims = (Claims) jwt.getBody();
+        // Use parseClaimsJws() instead of parse() to enforce signature verification.
+        // parse() accepts unsigned (alg:none) tokens, bypassing authentication entirely.
+        Claims claims = Jwts.parser().setSigningKey(JWT_PASSWORD).parseClaimsJws(accessToken).getBody();
         String user = (String) claims.get("user");
         if (!validUsers.contains(user)) {
           return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
