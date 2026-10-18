@@ -64,7 +64,7 @@ public class ProfileZipSlip extends ProfileUploadBase {
 
   @SneakyThrows
   private AttackResult processZipUpload(MultipartFile file, String username) {
-    var tmpZipDirectory = Files.createTempDirectory(username);
+    var tmpZipDirectory = Files.createTempDirectory("webgoat-zip-");
     cleanupAndCreateDirectoryForUser(username);
     var currentImage = getProfilePictureAsBase64(username);
 
@@ -76,7 +76,12 @@ public class ProfileZipSlip extends ProfileUploadBase {
       Enumeration<? extends ZipEntry> entries = zip.entries();
       while (entries.hasMoreElements()) {
         ZipEntry e = entries.nextElement();
-        File f = new File(tmpZipDirectory.toFile(), e.getName());
+        // Prevent Zip Slip: resolve the entry name and verify it stays within the target directory
+        var resolvedPath = tmpZipDirectory.resolve(e.getName()).normalize();
+        if (!resolvedPath.startsWith(tmpZipDirectory.normalize())) {
+          return failed(this).output("path-traversal-zip-slip.no-traversal").build();
+        }
+        File f = resolvedPath.toFile();
         InputStream is = zip.getInputStream(e);
         Files.copy(is, f.toPath(), StandardCopyOption.REPLACE_EXISTING);
       }
