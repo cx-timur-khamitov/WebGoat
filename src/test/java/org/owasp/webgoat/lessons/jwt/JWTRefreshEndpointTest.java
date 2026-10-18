@@ -248,4 +248,63 @@ public class JWTRefreshEndpointTest extends LessonTest {
         .perform(MockMvcRequestBuilders.post("/JWT/refresh/login"))
         .andExpect(status().isUnauthorized());
   }
+
+  /**
+   * Tests that the login endpoint does not expose the plaintext password through the HTTP response
+   * and that correct credentials authenticate while wrong credentials reject — verifying that the
+   * char[]-based password handling (CWE-244 fix) does not break authentication semantics.
+   */
+  @Test
+  void loginWithCorrectCredentialsShouldSucceedAndNotExposePasswordInResponse() throws Exception {
+    ObjectMapper objectMapper = new ObjectMapper();
+    var loginJson = Map.of("user", "Jerry", "password", PASSWORD);
+    MvcResult result =
+        mockMvc
+            .perform(
+                MockMvcRequestBuilders.post("/JWT/refresh/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(loginJson)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+    // Response must contain tokens but must NOT echo back the plaintext password
+    String responseBody = result.getResponse().getContentAsString();
+    org.junit.jupiter.api.Assertions.assertFalse(
+        responseBody.contains(PASSWORD),
+        "Response must not echo the plaintext password in any form");
+    org.junit.jupiter.api.Assertions.assertTrue(
+        responseBody.contains("access_token"),
+        "Response must contain an access_token on successful login");
+    org.junit.jupiter.api.Assertions.assertTrue(
+        responseBody.contains("refresh_token"),
+        "Response must contain a refresh_token on successful login");
+  }
+
+  @Test
+  void loginWithNullPasswordShouldReturn401() throws Exception {
+    // A null/missing password value in the JSON body must not cause an exception
+    // (the char[] conversion must handle null safely) and must return 401.
+    ObjectMapper objectMapper = new ObjectMapper();
+    Map<String, Object> loginJson = new HashMap<>();
+    loginJson.put("user", "Jerry");
+    loginJson.put("password", null);
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/refresh/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(loginJson)))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void loginWithEmptyPasswordShouldReturn401() throws Exception {
+    ObjectMapper objectMapper = new ObjectMapper();
+    var loginJson = Map.of("user", "Jerry", "password", "");
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/refresh/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(loginJson)))
+        .andExpect(status().isUnauthorized());
+  }
 }
