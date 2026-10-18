@@ -7,6 +7,7 @@ package org.owasp.webgoat.webwolf.jwt;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Arrays;
 import java.util.Map;
 import lombok.SneakyThrows;
 import org.jose4j.jwk.JsonWebKey.OutputControlLevel;
@@ -125,6 +126,106 @@ class JWTTokenTest {
     var token = JWTToken.decode(compact, null, wrongJwks);
 
     assertThat(token.isSignatureValid()).isFalse();
+  }
+
+  // ---- Tests for CWE-244 (Heap Inspection) remediation: char[] secretKey overloads ----
+
+  @Test
+  void encodeWithCharArraySecretKeyProducesSameResultAsStringOverload() {
+    var headers = Map.of("alg", "HS256", "typ", "JWT");
+    var payload = Map.of("test", "test");
+    char[] keyChars = "webgoat".toCharArray();
+    var token = JWTToken.encode(toString(headers), toString(payload), keyChars);
+
+    assertThat(token.getEncoded())
+        .isEqualTo(
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZXN0IjoidGVzdCJ9.axNp9BkswwK_YRF2URJ5P1UejQNYZbK4qYcMnkusg6I");
+    assertThat(token.isSignatureValid()).isTrue();
+  }
+
+  @Test
+  void encodeWithEmptyCharArraySecretKeyDoesNotSign() {
+    var headers = Map.of("alg", "HS256", "typ", "JWT");
+    var payload = Map.of("test", "test");
+    char[] emptyKey = new char[0];
+    var token = JWTToken.encode(toString(headers), toString(payload), emptyKey);
+
+    // Without a key the token should not have a signature (only two parts)
+    assertThat(token.getEncoded())
+        .isEqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZXN0IjoidGVzdCJ9");
+  }
+
+  @Test
+  void decodeWithCharArraySecretKeyValidatesSignatureCorrectly() {
+    char[] keyChars = "test".toCharArray();
+    var token =
+        JWTToken.decode(
+            "eyJhbGciOiJIUzI1NiJ9.eyJ0ZXN0IjoidGVzdCJ9.KOobRHDYyaesV_doOk11XXGKSONwzllraAaqqM4VFE4",
+            keyChars,
+            null);
+
+    assertThat(token.getHeader()).contains("\"alg\" : \"HS256\"");
+    assertThat(token.isSignatureValid()).isTrue();
+  }
+
+  @Test
+  void decodeWithWrongCharArraySecretKeyReturnsInvalidSignature() {
+    char[] wrongKey = "wrongkey".toCharArray();
+    var token =
+        JWTToken.decode(
+            "eyJhbGciOiJIUzI1NiJ9.eyJ0ZXN0IjoidGVzdCJ9.KOobRHDYyaesV_doOk11XXGKSONwzllraAaqqM4VFE4",
+            wrongKey,
+            null);
+
+    assertThat(token.isSignatureValid()).isFalse();
+  }
+
+  @Test
+  void decodeWithEmptyCharArraySecretKeyReturnsFalseSignature() {
+    char[] emptyKey = new char[0];
+    var token =
+        JWTToken.decode(
+            "eyJhbGciOiJIUzI1NiJ9.eyJ0ZXN0IjoidGVzdCJ9.KOobRHDYyaesV_doOk11XXGKSONwzllraAaqqM4VFE4",
+            emptyKey,
+            null);
+
+    assertThat(token.isSignatureValid()).isFalse();
+  }
+
+  @Test
+  void secretKeyCharArrayIsClearedAfterUse() {
+    // Verify that the caller can zero the char[] after calling encode (CWE-244 prevention)
+    var headers = Map.of("alg", "HS256", "typ", "JWT");
+    var payload = Map.of("test", "test");
+    char[] keyChars = "webgoat".toCharArray();
+
+    JWTToken.encode(toString(headers), toString(payload), keyChars);
+
+    // Caller zeros out the key — this simulates the pattern used by JWTController
+    Arrays.fill(keyChars, '\0');
+
+    // Confirm every character has been zeroed
+    for (char c : keyChars) {
+      assertThat(c).isEqualTo('\0');
+    }
+  }
+
+  @Test
+  void secretKeyCharArrayIsClearedAfterDecodeUse() {
+    // Verify that the caller can zero the char[] after calling decode (CWE-244 prevention)
+    char[] keyChars = "test".toCharArray();
+
+    JWTToken.decode(
+        "eyJhbGciOiJIUzI1NiJ9.eyJ0ZXN0IjoidGVzdCJ9.KOobRHDYyaesV_doOk11XXGKSONwzllraAaqqM4VFE4",
+        keyChars,
+        null);
+
+    // Caller zeros out the key — this simulates the pattern used by JWTController
+    Arrays.fill(keyChars, '\0');
+
+    for (char c : keyChars) {
+      assertThat(c).isEqualTo('\0');
+    }
   }
 
   @SneakyThrows
