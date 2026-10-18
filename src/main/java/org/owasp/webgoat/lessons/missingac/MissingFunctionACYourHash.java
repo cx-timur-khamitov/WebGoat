@@ -6,7 +6,6 @@ package org.owasp.webgoat.lessons.missingac;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_SIMPLE;
 
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -37,11 +36,16 @@ public class MissingFunctionACYourHash implements AssignmentEndpoint {
   @ResponseBody
   public AttackResult simple(String userHash) {
     User user = userRepository.findByUsername("Jerry");
-    DisplayUser displayUser = new DisplayUser(user, PASSWORD_SALT_SIMPLE);
-    if (userHash.equals(displayUser.getUserHash())) {
-      return success(this).feedback("access-control.hash.success").build();
-    } else {
-      return failed(this).build();
+    DisplayUser displayUser = new DisplayUser(user, null);
+    try {
+      // Verify the submitted hash against Jerry's stored credentials using the random-salt
+      // verifier; the hash must have been produced by DisplayUser.genUserHash() for Jerry
+      if (displayUser.verifyUserHash(user.getUsername(), user.getPassword(), userHash)) {
+        return success(this).feedback("access-control.hash.success").build();
+      }
+    } catch (Exception e) {
+      // invalid hash format — fall through to failed
     }
+    return failed(this).build();
   }
 }

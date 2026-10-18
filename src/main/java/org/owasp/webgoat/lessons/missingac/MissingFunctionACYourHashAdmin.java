@@ -6,7 +6,6 @@ package org.owasp.webgoat.lessons.missingac;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_ADMIN;
 
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -43,11 +42,16 @@ public class MissingFunctionACYourHashAdmin implements AssignmentEndpoint {
     // if not admin then return 403
 
     var user = userRepository.findByUsername("Jerry");
-    var displayUser = new DisplayUser(user, PASSWORD_SALT_ADMIN);
-    if (userHash.equals(displayUser.getUserHash())) {
-      return success(this).feedback("access-control.hash.success").build();
-    } else {
-      return failed(this).feedback("access-control.hash.close").build();
+    var displayUser = new DisplayUser(user, null);
+    try {
+      // Verify the submitted hash against Jerry's stored credentials using the random-salt
+      // verifier; the hash must have been produced by DisplayUser.genUserHash() for Jerry
+      if (displayUser.verifyUserHash(user.getUsername(), user.getPassword(), userHash)) {
+        return success(this).feedback("access-control.hash.success").build();
+      }
+    } catch (Exception e) {
+      // invalid hash format — fall through to failed
     }
+    return failed(this).feedback("access-control.hash.close").build();
   }
 }
