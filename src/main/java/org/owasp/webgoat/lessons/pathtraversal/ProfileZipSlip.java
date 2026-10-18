@@ -69,16 +69,30 @@ public class ProfileZipSlip extends ProfileUploadBase {
     var currentImage = getProfilePictureAsBase64(username);
 
     try {
-      var uploadedZipFile = tmpZipDirectory.resolve(file.getOriginalFilename());
+      // Use only the plain filename (no directory components) to prevent path traversal
+      // when saving the uploaded zip file to the temp directory.
+      String originalFilename = file.getOriginalFilename();
+      String safeFilename =
+          (originalFilename == null)
+              ? "upload.zip"
+              : new File(originalFilename).getName();
+      var uploadedZipFile = tmpZipDirectory.resolve(safeFilename);
       FileCopyUtils.copy(file.getBytes(), uploadedZipFile.toFile());
 
       ZipFile zip = new ZipFile(uploadedZipFile.toFile());
       Enumeration<? extends ZipEntry> entries = zip.entries();
       while (entries.hasMoreElements()) {
         ZipEntry e = entries.nextElement();
-        File f = new File(tmpZipDirectory.toFile(), e.getName());
+        // Resolve and normalize the entry path, then verify it stays within tmpZipDirectory
+        // to prevent Zip Slip attacks (CWE-36 / CWE-22).
+        var resolvedPath = tmpZipDirectory.resolve(e.getName()).normalize();
+        if (!resolvedPath.startsWith(tmpZipDirectory.normalize())) {
+          throw new IOException(
+              "Zip Slip detected: entry would be extracted outside target directory: "
+                  + e.getName());
+        }
         InputStream is = zip.getInputStream(e);
-        Files.copy(is, f.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(is, resolvedPath, StandardCopyOption.REPLACE_EXISTING);
       }
 
       return isSolved(currentImage, getProfilePictureAsBase64(username));
