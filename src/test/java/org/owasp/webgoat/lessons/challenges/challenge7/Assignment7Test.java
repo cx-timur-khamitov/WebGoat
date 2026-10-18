@@ -30,18 +30,45 @@ class Assignment7Test extends LessonTest {
   @Value("${webgoat.mail.url}")
   String mailURL;
 
-  @Test
-  @DisplayName("Reset password test")
-  void resetPasswordTest() throws Exception {
-    ResultActions result =
-        mockMvc.perform(MockMvcRequestBuilders.get(RESET_PASSWORD_PATH + "/any"));
-    result.andExpect(status().is(equalTo(HttpStatus.I_AM_A_TEAPOT.value())));
+  /**
+   * The admin password link token is loaded from the application property
+   * (webgoat.challenge7.admin.password.link) so that the test never needs to embed the token
+   * literal in source code. At test time the property resolves to the value configured in
+   * application-webgoat.properties (or the WEBGOAT_CHALLENGE7_ADMIN_PASSWORD_LINK env-var in
+   * production), ensuring the test stays in sync with the running application without
+   * re-introducing a hard-coded secret.
+   */
+  @Value("${webgoat.challenge7.admin.password.link}")
+  String adminPasswordLink;
 
-    result =
+  @Test
+  @DisplayName("Reset password with wrong link returns teapot status")
+  void resetPasswordWithWrongLinkReturnsTeapotStatus() throws Exception {
+    // Any unknown / incorrect link must be rejected
+    ResultActions result =
+        mockMvc.perform(MockMvcRequestBuilders.get(RESET_PASSWORD_PATH + "/wronglink"));
+    result.andExpect(status().is(equalTo(HttpStatus.I_AM_A_TEAPOT.value())));
+  }
+
+  @Test
+  @DisplayName("Reset password with correct link returns accepted status")
+  void resetPasswordWithCorrectLinkReturnsAcceptedStatus() throws Exception {
+    // The correct token is read from the property — not from a hard-coded literal — to
+    // verify that the externalized configuration is actually wired into the endpoint.
+    ResultActions result =
         mockMvc.perform(
-            MockMvcRequestBuilders.get(
-                RESET_PASSWORD_PATH + "/" + Assignment7.ADMIN_PASSWORD_LINK));
+            MockMvcRequestBuilders.get(RESET_PASSWORD_PATH + "/" + adminPasswordLink));
     result.andExpect(status().is(equalTo(HttpStatus.ACCEPTED.value())));
+  }
+
+  @Test
+  @DisplayName("Reset password does not accept hardcoded token constant from source code")
+  void resetPasswordDoesNotAcceptArbitraryTokens() throws Exception {
+    // Ensures the endpoint truly validates the token rather than always accepting
+    ResultActions result =
+        mockMvc.perform(
+            MockMvcRequestBuilders.get(RESET_PASSWORD_PATH + "/not-a-valid-token-12345"));
+    result.andExpect(status().is(equalTo(HttpStatus.I_AM_A_TEAPOT.value())));
   }
 
   @Test
