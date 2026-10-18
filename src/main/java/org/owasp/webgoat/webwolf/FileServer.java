@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -83,7 +84,17 @@ public class FileServer {
           new ModelMap().addAttribute("uploadSuccess", NOTHING_TO_UPLOAD));
     }
 
-    var destinationDir = new File(fileLocation, username);
+    // Resolve and normalize the destination directory to prevent path traversal via username.
+    // Verify that the resolved path is still within the configured fileLocation base directory.
+    Path baseDir = Path.of(fileLocation).normalize().toAbsolutePath();
+    Path resolvedDir = baseDir.resolve(username).normalize().toAbsolutePath();
+    if (!resolvedDir.startsWith(baseDir)) {
+      log.warn("Path traversal attempt detected for user {}", username);
+      return new ModelAndView(
+          new RedirectView("files", true),
+          new ModelMap().addAttribute("uploadSuccess", NOTHING_TO_UPLOAD));
+    }
+    var destinationDir = resolvedDir.toFile();
     destinationDir.mkdirs();
     // DO NOT use multipartFile.transferTo(), see
     // https://stackoverflow.com/questions/60336929/java-nio-file-nosuchfileexception-when-file-transferto-is-called
