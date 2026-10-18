@@ -6,6 +6,7 @@ package org.owasp.webgoat.lessons.missingac;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.Base64;
 import lombok.Getter;
 
@@ -31,9 +32,14 @@ public class DisplayUser {
   protected String genUserHash(String username, String password, String passwordSalt)
       throws Exception {
     MessageDigest md = MessageDigest.getInstance("SHA-256");
-    // salting is good, but static & too predictable ... short too for a salt
-    String salted = password + passwordSalt + username;
-    // md.update(salted.getBytes("UTF-8")); // Change this to "UTF-16" if needed
+    // Generate a cryptographically random per-invocation salt (16 bytes) so the
+    // hash cannot be reversed via rainbow tables or precomputed dictionary attacks.
+    SecureRandom secureRandom = new SecureRandom();
+    byte[] randomSaltBytes = new byte[16];
+    secureRandom.nextBytes(randomSaltBytes);
+    String randomSalt = Base64.getEncoder().encodeToString(randomSaltBytes);
+    // Combine the random salt with the provided context salt for defence-in-depth
+    String salted = password + randomSalt + passwordSalt + username;
     byte[] hash = md.digest(salted.getBytes(StandardCharsets.UTF_8));
     return Base64.getEncoder().encodeToString(hash);
   }
