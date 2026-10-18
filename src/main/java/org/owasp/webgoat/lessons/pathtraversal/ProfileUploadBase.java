@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
@@ -100,7 +101,14 @@ public class ProfileUploadBase implements AssignmentEndpoint {
   }
 
   protected byte[] getProfilePictureAsBase64(String username) {
-    var profilePictureDirectory = new File(this.webGoatHomeDirectory, "/PathTraversal/" + username);
+    // Prevent path traversal: resolve the user-specific directory and verify it stays within the
+    // expected base path using Path.normalize() + containment check (CWE-23 remediation).
+    Path baseDirectory = Path.of(this.webGoatHomeDirectory, "PathTraversal").normalize();
+    Path resolvedDirectory = baseDirectory.resolve(username).normalize();
+    if (!resolvedDirectory.startsWith(baseDirectory)) {
+      return defaultImage();
+    }
+    var profilePictureDirectory = resolvedDirectory.toFile();
     var profileDirectoryFiles = profilePictureDirectory.listFiles();
 
     if (profileDirectoryFiles != null && profileDirectoryFiles.length > 0) {
