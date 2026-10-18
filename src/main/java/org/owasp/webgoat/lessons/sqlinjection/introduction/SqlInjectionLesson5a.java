@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
+// Security fix: replaced string-concatenated SQL with a parameterized PreparedStatement
+// to eliminate the SQL injection vulnerability (CWE-89).
+
 @RestController
 @AssignmentHints(value = {"SqlStringInjectionHint5a1"})
 public class SqlInjectionLesson5a implements AssignmentEndpoint {
@@ -42,41 +45,41 @@ public class SqlInjectionLesson5a implements AssignmentEndpoint {
   }
 
   protected AttackResult injectableQuery(String accountName) {
-    String query = "";
-    try (Connection connection = dataSource.getConnection()) {
-      query =
-          "SELECT * FROM user_data WHERE first_name = 'John' and last_name = '" + accountName + "'";
-      try (Statement statement =
-          connection.createStatement(
-              ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE)) {
-        ResultSet results = statement.executeQuery(query);
+    // Use a parameterized PreparedStatement so that accountName is treated as data,
+    // not as part of the SQL syntax — this prevents SQL injection (CWE-89).
+    String query = "SELECT * FROM user_data WHERE first_name = 'John' and last_name = ?";
+    try (Connection connection = dataSource.getConnection();
+        PreparedStatement preparedStatement =
+            connection.prepareStatement(
+                query, ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_UPDATABLE)) {
+      preparedStatement.setString(1, accountName);
+      ResultSet results = preparedStatement.executeQuery();
 
-        if ((results != null) && (results.first())) {
-          ResultSetMetaData resultsMetaData = results.getMetaData();
-          StringBuilder output = new StringBuilder();
+      if ((results != null) && (results.first())) {
+        ResultSetMetaData resultsMetaData = results.getMetaData();
+        StringBuilder output = new StringBuilder();
 
-          output.append(writeTable(results, resultsMetaData));
-          results.last();
+        output.append(writeTable(results, resultsMetaData));
+        results.last();
 
-          // If they get back more than one user they succeeded
-          if (results.getRow() >= 6) {
-            return success(this)
-                .feedback("sql-injection.5a.success")
-                .output("Your query was: " + query + EXPLANATION)
-                .feedbackArgs(output.toString())
-                .build();
-          } else {
-            return failed(this).output(output.toString() + "<br> Your query was: " + query).build();
-          }
-        } else {
-          return failed(this)
-              .feedback("sql-injection.5a.no.results")
-              .output("Your query was: " + query)
+        // If they get back more than one user they succeeded
+        if (results.getRow() >= 6) {
+          return success(this)
+              .feedback("sql-injection.5a.success")
+              .output("Your query was: " + query + EXPLANATION)
+              .feedbackArgs(output.toString())
               .build();
+        } else {
+          return failed(this).output(output.toString() + "<br> Your query was: " + query).build();
         }
-      } catch (SQLException sqle) {
-        return failed(this).output(sqle.getMessage() + "<br> Your query was: " + query).build();
+      } else {
+        return failed(this)
+            .feedback("sql-injection.5a.no.results")
+            .output("Your query was: " + query)
+            .build();
       }
+    } catch (SQLException sqle) {
+      return failed(this).output(sqle.getMessage() + "<br> Your query was: " + query).build();
     } catch (Exception e) {
       return failed(this)
           .output(
