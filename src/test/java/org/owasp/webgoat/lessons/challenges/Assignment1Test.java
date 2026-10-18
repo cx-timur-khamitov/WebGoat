@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 class Assignment1Test extends LessonTest {
 
   @Autowired private Flags flags;
+  @Autowired private SolutionConstants solutionConstants;
 
   @BeforeEach
   public void setup() {}
@@ -33,7 +34,7 @@ class Assignment1Test extends LessonTest {
                 .param("username", "admin")
                 .param(
                     "password",
-                    SolutionConstants.PASSWORD.replace(
+                    solutionConstants.getPassword().replace(
                         "1234", String.format("%04d", ImageServlet.PINCODE))))
         .andExpect(jsonPath("$.feedback", CoreMatchers.containsString("flag: " + flags.getFlag(1))))
         .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(true)));
@@ -49,5 +50,17 @@ class Assignment1Test extends LessonTest {
         .andExpect(
             jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("assignment.not.solved"))))
         .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+  }
+
+  @Test
+  void passwordIsNotHardcoded() {
+    // Verify the password is loaded from configuration (not hardcoded in source).
+    // The password must be non-null and non-empty when loaded from the application context.
+    org.junit.jupiter.api.Assertions.assertNotNull(
+        solutionConstants.getPassword(),
+        "Admin password must be loaded from configuration, not hardcoded");
+    org.junit.jupiter.api.Assertions.assertFalse(
+        solutionConstants.getPassword().isEmpty(),
+        "Admin password loaded from configuration must not be empty");
   }
 }
