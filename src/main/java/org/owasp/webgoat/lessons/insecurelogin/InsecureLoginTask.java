@@ -9,16 +9,23 @@ import static org.owasp.webgoat.container.assignments.AttackResultBuilder.succes
 
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AttackResult;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 public class InsecureLoginTask implements AssignmentEndpoint {
 
+  @Value("${insecurelogin.lesson.username}")
+  private String expectedUsername;
+
+  @Value("${insecurelogin.lesson.password}")
+  private String expectedPassword;
+
   @PostMapping("/InsecureLogin/task")
   @ResponseBody
   public AttackResult completed(@RequestParam String username, @RequestParam String password) {
-    if ("CaptainJack".equals(username) && "BlackPearl".equals(password)) {
+    if (expectedUsername.equals(username) && expectedPassword.equals(password)) {
       return success(this).build();
     }
     return failed(this).build();
