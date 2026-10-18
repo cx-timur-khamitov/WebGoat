@@ -36,7 +36,8 @@ public class HashingAssignment implements AssignmentEndpoint {
 
       String secret = SECRETS[new Random().nextInt(SECRETS.length)];
 
-      MessageDigest md = MessageDigest.getInstance("MD5");
+      // Use SHA-256 instead of the broken MD5 algorithm (CWE-327)
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
       md.update(secret.getBytes());
       byte[] digest = md.digest();
       md5Hash = DatatypeConverter.printHexBinary(digest).toUpperCase();
