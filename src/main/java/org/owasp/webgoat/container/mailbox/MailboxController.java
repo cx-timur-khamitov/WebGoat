@@ -57,10 +57,15 @@ public class MailboxController {
 
   @PostMapping("/mail")
   @ResponseStatus(HttpStatus.CREATED)
-  public void sendEmail(@RequestBody Email email) {
+  public void sendEmail(@RequestBody Email email, Authentication authentication) {
     // time is @JsonIgnore (server-controlled). Stamp the receipt time here: Spring Boot 4 / Jackson
     // 3 deserializes via the all-args constructor, which bypasses the field's default initializer.
     email.setTime(LocalDateTime.now());
+    // sender is server-controlled: always set it to the authenticated user's identity so that
+    // client-supplied sender values cannot be used to spoof another user's identity (CWE-472).
+    String authenticatedUser =
+        (null != authentication) ? authentication.getName() : "anonymous";
+    email.setSender(authenticatedUser);
     mailboxRepository.save(email);
   }
 

@@ -70,6 +70,80 @@ class MailboxControllerTest extends LessonTest {
         .andExpect(status().isCreated());
   }
 
+  /**
+   * Security regression test for CWE-472 (Parameter Tampering).
+   * Verifies that the sender field is always set to the authenticated user's identity,
+   * ignoring any client-supplied sender value.
+   */
+  @Test
+  public void senderShouldBeOverwrittenWithAuthenticatedUser() throws Exception {
+    Email emailWithSpoofedSender =
+        Email.builder()
+            .contents("Phishing content")
+            .recipient("victim@webgoat.org")
+            // Client attempts to spoof a different sender identity
+            .sender("admin@webgoat.org")
+            .title("Important notice")
+            .time(LocalDateTime.now())
+            .build();
+
+    org.mockito.ArgumentCaptor<Email> savedEmailCaptor =
+        org.mockito.ArgumentCaptor.forClass(Email.class);
+
+    this.mockMvc
+        .perform(
+            post("/mail")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsBytes(emailWithSpoofedSender))
+                .principal(user("legitimate_user")))
+        .andExpect(status().isCreated());
+
+    // Verify that the saved email has the authenticated user as sender, not the spoofed value
+    Mockito.verify(mailbox).save(savedEmailCaptor.capture());
+    Email savedEmail = savedEmailCaptor.getValue();
+    assertThat(savedEmail.getSender())
+        .as("Sender must be the authenticated user, not the client-supplied spoofed value")
+        .isEqualTo("legitimate_user");
+    assertThat(savedEmail.getSender())
+        .as("The client-supplied spoofed sender 'admin@webgoat.org' must not be persisted")
+        .isNotEqualTo("admin@webgoat.org");
+  }
+
+  /**
+   * Security regression test for CWE-472 (Parameter Tampering).
+   * Verifies that an unauthenticated request has its sender set to "anonymous"
+   * rather than using any client-supplied sender value.
+   */
+  @Test
+  public void unauthenticatedSenderShouldBeSetToAnonymous() throws Exception {
+    Email emailWithSpoofedSender =
+        Email.builder()
+            .contents("Test content")
+            .recipient("someone@webgoat.org")
+            .sender("impersonated@webgoat.org")
+            .title("Test subject")
+            .time(LocalDateTime.now())
+            .build();
+
+    org.mockito.ArgumentCaptor<Email> savedEmailCaptor =
+        org.mockito.ArgumentCaptor.forClass(Email.class);
+
+    // Send without authentication principal
+    this.mockMvc
+        .perform(
+            post("/mail")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsBytes(emailWithSpoofedSender)))
+        .andExpect(status().isCreated());
+
+    Mockito.verify(mailbox).save(savedEmailCaptor.capture());
+    Email savedEmail = savedEmailCaptor.getValue();
+    // The server should override the sender with "anonymous" for unauthenticated requests
+    assertThat(savedEmail.getSender())
+        .as("Unauthenticated sender must be 'anonymous', not the spoofed value")
+        .isEqualTo("anonymous");
+  }
+
   @Test
   public void userShouldBeAbleToReadOwnEmail() throws Exception {
     Email email =
