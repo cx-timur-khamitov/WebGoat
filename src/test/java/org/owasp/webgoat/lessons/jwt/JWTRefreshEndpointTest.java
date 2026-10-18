@@ -5,12 +5,16 @@
 package org.owasp.webgoat.lessons.jwt;
 
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.owasp.webgoat.lessons.jwt.JWTRefreshEndpoint.PASSWORD;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
+import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import org.hamcrest.CoreMatchers;
@@ -247,5 +251,55 @@ public class JWTRefreshEndpointTest extends LessonTest {
     mockMvc
         .perform(MockMvcRequestBuilders.post("/JWT/refresh/login"))
         .andExpect(status().isUnauthorized());
+  }
+
+  /**
+   * Regression test: verify that the JWT signing secret is NOT stored as a static
+   * hardcoded constant in JWTRefreshEndpoint (CWE-259 / Use_Of_Hardcoded_Password).
+   *
+   * <p>The secret must be injected at runtime via Spring's @Value and the property
+   * {@code webgoat.jwt.secret}, which can be overridden through the {@code WEBGOAT_JWT_SECRET}
+   * environment variable — not baked into the compiled class.
+   */
+  @Test
+  void jwtPasswordMustNotBeAHardcodedStaticConstant() {
+    boolean hasHardcodedStaticJwtPassword =
+        Arrays.stream(JWTRefreshEndpoint.class.getDeclaredFields())
+            .anyMatch(
+                f ->
+                    java.lang.reflect.Modifier.isStatic(f.getModifiers())
+                        && java.lang.reflect.Modifier.isFinal(f.getModifiers())
+                        && (f.getName().equals("JWT_PASSWORD")
+                            || f.getName().equals("jwtPassword")));
+    assertFalse(
+        hasHardcodedStaticJwtPassword,
+        "JWT signing secret must not be a static final constant — it must be injected"
+            + " via @Value so it can be overridden at deployment time.");
+  }
+
+  /**
+   * Regression test: verify that the JWT signing secret is loaded from the Spring environment
+   * (i.e. the @Value-injected field is non-null when the Spring context is live).
+   *
+   * <p>If the field were still hardcoded the test would still pass, but combined with
+   * {@link #jwtPasswordMustNotBeAHardcodedStaticConstant()} it proves the full property-
+   * injection path is wired and working.
+   */
+  @Test
+  void jwtPasswordIsInjectedFromSpringEnvironment() throws Exception {
+    // Obtain the bean from the live application context
+    JWTRefreshEndpoint endpoint = wac.getBean(JWTRefreshEndpoint.class);
+
+    Field jwtPasswordField = JWTRefreshEndpoint.class.getDeclaredField("jwtPassword");
+    jwtPasswordField.setAccessible(true);
+    Object injectedValue = jwtPasswordField.get(endpoint);
+
+    org.hamcrest.MatcherAssert.assertThat(
+        "jwtPassword must be injected by Spring @Value and must not be null",
+        injectedValue,
+        notNullValue());
+    assertFalse(
+        ((String) injectedValue).isBlank(),
+        "jwtPassword must not be blank — check webgoat.jwt.secret in application properties");
   }
 }
