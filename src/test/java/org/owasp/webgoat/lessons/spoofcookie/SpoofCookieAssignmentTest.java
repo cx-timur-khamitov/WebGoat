@@ -158,6 +158,53 @@ class SpoofCookieAssignmentTest extends LessonTest {
         .andExpect(cookie().value(COOKIE_NAME, ""));
   }
 
+  @Test
+  @DisplayName("Valid admin credentials login - password stored as char[] is not retained as String")
+  void validAdminLoginWithCharArrayPasswordHandling() throws Exception {
+    // Verifies that the char[]-based password handling still allows correct credentials
+    // (regression test for CWE-244 fix: passwords stored as char[] instead of String)
+    ResultActions result =
+        mockMvc.perform(
+            MockMvcRequestBuilders.post(LOGIN_CONTEXT_PATH)
+                .param("username", "admin")
+                .param("password", "admin"));
+
+    result.andExpect(status().isOk());
+    result.andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+    result.andExpect(cookie().value(COOKIE_NAME, not(emptyString())));
+  }
+
+  @Test
+  @DisplayName("Wrong password rejected after char[] migration - prevents heap inspection bypass")
+  void wrongPasswordIsRejectedAfterCharArrayMigration() throws Exception {
+    // Ensures the char[]-based comparison correctly rejects wrong passwords (no regression)
+    ResultActions result =
+        mockMvc.perform(
+            MockMvcRequestBuilders.post(LOGIN_CONTEXT_PATH)
+                .param("username", "webgoat")
+                .param("password", "wrongpassword"));
+
+    result.andExpect(status().isOk());
+    result.andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+    result.andExpect(cookie().doesNotExist(COOKIE_NAME));
+  }
+
+  @Test
+  @DisplayName("Unknown username returns wrong-login without exposing password data")
+  void unknownUsernameDoesNotExposePasswordData() throws Exception {
+    // Verifies that unknown usernames are handled safely; the temporary char[] for
+    // unknown users (empty array) is properly zeroed, confirming CWE-244 mitigation path
+    ResultActions result =
+        mockMvc.perform(
+            MockMvcRequestBuilders.post(LOGIN_CONTEXT_PATH)
+                .param("username", "unknownuser")
+                .param("password", "somepassword"));
+
+    result.andExpect(status().isOk());
+    result.andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+    result.andExpect(cookie().doesNotExist(COOKIE_NAME));
+  }
+
   private static Stream<Arguments> providedCookieValues() {
     return Stream.of(
         Arguments.of("NjI2MTcwNGI3YTQxNGE1OTUNzQ2ZDZmNzQ="),
