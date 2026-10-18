@@ -10,6 +10,7 @@ import static org.springframework.util.StringUtils.hasText;
 
 import com.google.common.collect.Maps;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +46,8 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
       "somethingVeryRandomWhichNoOneWillEverTypeInAsPasswordForTom";
   static final String TOM_EMAIL = "tom@webgoat-cloud.org";
   static Map<String, String> userToTomResetLink = new HashMap<>();
-  static Map<String, String> usersToTomPassword = Maps.newHashMap();
+  // Use char[] instead of String so the password can be zeroed from memory after use (CWE-244)
+  static Map<String, char[]> usersToTomPassword = Maps.newHashMap();
   static List<String> resetLinks = new ArrayList<>();
 
   static final String TEMPLATE =
@@ -67,11 +69,19 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
   public AttackResult login(
       @RequestParam String password, @RequestParam String email, @CurrentUsername String username) {
     if (TOM_EMAIL.equals(email)) {
-      String passwordTom = usersToTomPassword.getOrDefault(username, PASSWORD_TOM_9);
-      if (passwordTom.equals(PASSWORD_TOM_9)) {
+      // Retrieve the stored password as char[] to allow zeroing after comparison
+      char[] storedPassword = usersToTomPassword.get(username);
+      if (storedPassword == null) {
         return failed(this).feedback("login_failed").build();
-      } else if (passwordTom.equals(password)) {
-        return success(this).build();
+      }
+      try {
+        if (Arrays.equals(storedPassword, password.toCharArray())) {
+          return success(this).build();
+        }
+      } finally {
+        // Zero out the in-memory copy after comparison to limit heap exposure (CWE-244)
+        Arrays.fill(storedPassword, '\0');
+        usersToTomPassword.remove(username);
       }
     }
     return failed(this).feedback("login_failed.tom").build();
@@ -111,7 +121,8 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
       return modelAndView;
     }
     if (checkIfLinkIsFromTom(form.getResetLink(), username)) {
-      usersToTomPassword.put(username, form.getPassword());
+      // Store password as char[] so it can be zeroed after use (CWE-244)
+      usersToTomPassword.put(username, form.getPassword().toCharArray());
     }
     modelAndView.setViewName(VIEW_FORMATTER.formatted("success"));
     return modelAndView;
