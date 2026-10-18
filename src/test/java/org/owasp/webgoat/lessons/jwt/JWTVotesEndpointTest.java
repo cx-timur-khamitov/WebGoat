@@ -36,32 +36,53 @@ public class JWTVotesEndpointTest extends LessonTest {
   }
 
   @Test
-  public void solveAssignment() throws Exception {
-    // Create new token and set alg to none and do not sign it
+  public void unsignedAlgNoneTokenShouldBeRejectedForResetVotes() throws Exception {
+    // An unsigned JWT with alg:none must NOT be accepted — signature verification is required
     Claims claims = Jwts.claims();
     claims.put("admin", "true");
     claims.put("user", "Tom");
     String token = Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
 
-    // Call the reset endpoint
+    // The reset endpoint must reject the alg:none (unsigned) token
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/JWT/votings")
                 .contentType(MediaType.APPLICATION_JSON)
                 .cookie(new Cookie("access_token", token)))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(true)));
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 
   @Test
-  public void solveAssignmentWithBoolean() throws Exception {
-    // Create new token and set alg to none and do not sign it
+  public void unsignedAlgNoneTokenWithBooleanAdminShouldBeRejected() throws Exception {
+    // An unsigned JWT with boolean admin:true must also be rejected
     Claims claims = Jwts.claims();
     claims.put("admin", true);
     claims.put("user", "Tom");
     String token = Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
 
-    // Call the reset endpoint
+    // The reset endpoint must reject the alg:none (unsigned) token
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/votings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .cookie(new Cookie("access_token", token)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
+  }
+
+  @Test
+  public void properlySignedAdminTokenShouldResetVotes() throws Exception {
+    // A properly signed token with admin:true must be accepted and reset votes
+    Claims claims = Jwts.claims();
+    claims.put("admin", "true");
+    claims.put("user", "Tom");
+    String token =
+        Jwts.builder()
+            .setClaims(claims)
+            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, JWT_PASSWORD)
+            .compact();
+
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/JWT/votings")
