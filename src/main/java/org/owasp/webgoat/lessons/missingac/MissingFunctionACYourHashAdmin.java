@@ -6,7 +6,6 @@ package org.owasp.webgoat.lessons.missingac;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_ADMIN;
 
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -29,9 +28,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class MissingFunctionACYourHashAdmin implements AssignmentEndpoint {
 
   private final MissingAccessControlUserRepository userRepository;
+  private final MissingFunctionAC lesson;
 
-  public MissingFunctionACYourHashAdmin(MissingAccessControlUserRepository userRepository) {
+  public MissingFunctionACYourHashAdmin(
+      MissingAccessControlUserRepository userRepository, MissingFunctionAC lesson) {
     this.userRepository = userRepository;
+    this.lesson = lesson;
   }
 
   @PostMapping(
@@ -43,7 +45,7 @@ public class MissingFunctionACYourHashAdmin implements AssignmentEndpoint {
     // if not admin then return 403
 
     var user = userRepository.findByUsername("Jerry");
-    var displayUser = new DisplayUser(user, PASSWORD_SALT_ADMIN);
+    var displayUser = new DisplayUser(user, lesson.getPasswordSaltAdmin());
     if (userHash.equals(displayUser.getUserHash())) {
       return success(this).feedback("access-control.hash.success").build();
     } else {
