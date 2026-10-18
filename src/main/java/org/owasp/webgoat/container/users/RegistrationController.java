@@ -16,7 +16,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.InitBinder;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 
@@ -27,6 +29,16 @@ public class RegistrationController {
 
   private final UserValidator userValidator;
   private final UserService userService;
+
+  /**
+   * Restricts data binding to only the explicitly allowed fields, preventing mass assignment
+   * (CWE-915). Only "username", "password", "matchingPassword", and "agree" may be bound from
+   * HTTP request parameters into UserForm.
+   */
+  @InitBinder
+  public void initBinder(WebDataBinder binder) {
+    binder.setAllowedFields("username", "password", "matchingPassword", "agree");
+  }
 
   @GetMapping("/registration")
   public String showForm(UserForm userForm) {
