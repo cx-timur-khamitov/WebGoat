@@ -27,8 +27,9 @@ public class Ping {
       @RequestHeader("User-Agent") String userAgent,
       @RequestParam(required = false) String text,
       @CurrentUsername String username) {
+    // Use parameterized logging to prevent log forging (CWE-117)
+    log.debug("{} {} {}", "GET", userAgent, text);
     String logLine = String.format("%s %s %s", "GET", userAgent, text);
-    log.debug(logLine);
     File logFile = new File(webGoatHomeDirectory, "/XXE/log" + username + ".txt");
     try {
       try (PrintWriter pw = new PrintWriter(logFile)) {
