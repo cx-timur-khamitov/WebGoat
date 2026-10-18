@@ -77,22 +77,24 @@ public class JWTRefreshEndpointTest extends LessonTest {
   }
 
   @Test
-  void solutionWithAlgNone() throws Exception {
+  void algNoneTokenShouldBeRejected() throws Exception {
+    // After fixing JWT_No_Signature_Verification (CWE-347), tokens with alg=none must be
+    // rejected by parseClaimsJws(). The old parse() accepted unsigned tokens; the fix does not.
     String tokenWithNoneAlgorithm =
         Jwts.builder()
             .setHeaderParam("alg", "none")
             .addClaims(Map.of("admin", "true", "user", "Tom"))
             .compact();
 
-    // Now checkout with the new token from Tom
+    // Unsigned (alg=none) token must now be rejected as invalid
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/JWT/refresh/checkout")
                 .header("Authorization", "Bearer " + tokenWithNoneAlgorithm))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.lessonCompleted", is(true)))
+        .andExpect(jsonPath("$.lessonCompleted", is(false)))
         .andExpect(
-            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("jwt-refresh-alg-none"))));
+            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("jwt-invalid-token"))));
   }
 
   @Test
@@ -247,5 +249,60 @@ public class JWTRefreshEndpointTest extends LessonTest {
     mockMvc
         .perform(MockMvcRequestBuilders.post("/JWT/refresh/login"))
         .andExpect(status().isUnauthorized());
+  }
+
+  /**
+   * Regression test for CWE-347 / JWT_No_Signature_Verification.
+   *
+   * <p>A token whose signature is forged (signed with the wrong key) must be rejected. Prior to
+   * the fix, {@code Jwts.parser().parse()} would accept unsigned tokens; the corrected code uses
+   * {@code parseClaimsJws()} which enforces signature validation.
+   */
+  @Test
+  void tokenSignedWithWrongKeyShouldBeRejectedAtCheckout() throws Exception {
+    // Build a "Tom" token signed with a different, unknown key — simulates a forged token
+    String forgedToken =
+        Jwts.builder()
+            .addClaims(Map.of("admin", "true", "user", "Tom"))
+            .signWith(
+                io.jsonwebtoken.SignatureAlgorithm.HS512,
+                "completely-wrong-secret-key-that-is-not-the-jwt-password")
+            .compact();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/refresh/checkout")
+                .header("Authorization", "Bearer " + forgedToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)))
+        .andExpect(
+            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("jwt-invalid-token"))));
+  }
+
+  /** A validly-signed token for a non-Tom user must not grant access. */
+  @Test
+  void validlySignedTokenForWrongUserShouldNotSucceed() throws Exception {
+    // Jerry logs in and gets a valid, properly-signed access token
+    ObjectMapper objectMapper = new ObjectMapper();
+    var loginJson = Map.of("user", "Jerry", "password", PASSWORD);
+    MvcResult result =
+        mockMvc
+            .perform(
+                MockMvcRequestBuilders.post("/JWT/refresh/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(loginJson)))
+            .andExpect(status().isOk())
+            .andReturn();
+    Map<String, String> tokens =
+        objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
+    String jerryAccessToken = tokens.get("access_token");
+
+    // Jerry's validly-signed token should be rejected at checkout (user is not Tom)
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/refresh/checkout")
+                .header("Authorization", "Bearer " + jerryAccessToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted", is(false)));
   }
 }
