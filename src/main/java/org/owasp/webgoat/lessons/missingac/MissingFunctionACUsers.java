@@ -4,9 +4,6 @@
  */
 package org.owasp.webgoat.lessons.missingac;
 
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_ADMIN;
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_SIMPLE;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -40,7 +37,7 @@ public class MissingFunctionACUsers {
     // add display user objects in place of direct users
     List<DisplayUser> displayUsers = new ArrayList<>();
     for (User user : allUsers) {
-      displayUsers.add(new DisplayUser(user, PASSWORD_SALT_SIMPLE));
+      displayUsers.add(new DisplayUser(user, null));
     }
     model.addObject("allUsers", displayUsers);
 
@@ -54,7 +51,7 @@ public class MissingFunctionACUsers {
   public ResponseEntity<List<DisplayUser>> usersService() {
     return ResponseEntity.ok(
         userRepository.findAllUsers().stream()
-            .map(user -> new DisplayUser(user, PASSWORD_SALT_SIMPLE))
+            .map(user -> new DisplayUser(user, null))
             .collect(Collectors.toList()));
   }
 
@@ -67,7 +64,7 @@ public class MissingFunctionACUsers {
     if (currentUser != null && currentUser.isAdmin()) {
       return ResponseEntity.ok(
           userRepository.findAllUsers().stream()
-              .map(user -> new DisplayUser(user, PASSWORD_SALT_ADMIN))
+              .map(user -> new DisplayUser(user, null))
               .collect(Collectors.toList()));
     }
     return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
