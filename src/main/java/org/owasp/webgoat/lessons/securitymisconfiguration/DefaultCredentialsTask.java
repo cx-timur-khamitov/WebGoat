@@ -11,6 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
 import org.owasp.webgoat.container.assignments.AttackResult;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,8 +26,17 @@ import org.springframework.web.bind.annotation.RestController;
 })
 public class DefaultCredentialsTask implements AssignmentEndpoint {
 
-  private static final String DEFAULT_USERNAME = "admin";
-  private static final String DEFAULT_PASSWORD = "admin";
+  // Credentials are loaded from application properties so they are not
+  // hardcoded in source and can be changed without rebuilding the application.
+  private final String defaultUsername;
+  private final String defaultPassword;
+
+  public DefaultCredentialsTask(
+      @Value("${webgoat.task1.default-username}") String defaultUsername,
+      @Value("${webgoat.task1.default-password}") String defaultPassword) {
+    this.defaultUsername = defaultUsername;
+    this.defaultPassword = defaultPassword;
+  }
 
   @PostMapping(
       value = "/SecurityMisconfiguration/task1",
@@ -42,7 +52,7 @@ public class DefaultCredentialsTask implements AssignmentEndpoint {
           .build();
     }
 
-    if (DEFAULT_USERNAME.equals(username.trim()) && DEFAULT_PASSWORD.equals(password)) {
+    if (defaultUsername.equals(username.trim()) && defaultPassword.equals(password)) {
       return success(this)
           .feedback("securitymisconfiguration.task1.success")
           .output("User profile: staging admin (no MFA)")
