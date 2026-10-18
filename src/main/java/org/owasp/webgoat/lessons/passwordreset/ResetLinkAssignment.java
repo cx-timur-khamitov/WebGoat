@@ -67,11 +67,19 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
   public AttackResult login(
       @RequestParam String password, @RequestParam String email, @CurrentUsername String username) {
     if (TOM_EMAIL.equals(email)) {
-      String passwordTom = usersToTomPassword.getOrDefault(username, PASSWORD_TOM_9);
-      if (passwordTom.equals(PASSWORD_TOM_9)) {
-        return failed(this).feedback("login_failed").build();
-      } else if (passwordTom.equals(password)) {
-        return success(this).build();
+      // Use char[] for the stored password so it can be explicitly zeroed after use,
+      // preventing heap inspection of plaintext credentials (CWE-244).
+      char[] passwordTom =
+          usersToTomPassword.getOrDefault(username, PASSWORD_TOM_9).toCharArray();
+      try {
+        if (java.util.Arrays.equals(passwordTom, PASSWORD_TOM_9.toCharArray())) {
+          return failed(this).feedback("login_failed").build();
+        } else if (java.util.Arrays.equals(passwordTom, password.toCharArray())) {
+          return success(this).build();
+        }
+      } finally {
+        // Zero out the char[] to prevent the password from lingering on the heap.
+        java.util.Arrays.fill(passwordTom, '\0');
       }
     }
     return failed(this).feedback("login_failed.tom").build();

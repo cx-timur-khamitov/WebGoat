@@ -5,6 +5,7 @@
 package org.owasp.webgoat.lessons.passwordreset;
 
 import static org.owasp.webgoat.lessons.passwordreset.ResetLinkAssignment.TOM_EMAIL;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
@@ -72,6 +73,75 @@ class ResetLinkAssignmentTest extends LessonTest {
             .andReturn();
     Assertions.assertThat(resourceLoader.getResource(mvcResult.getModelAndView().getViewName()))
         .isNotNull();
+  }
+
+  // -----------------------------------------------------------------------
+  // Tests for CWE-244 (Heap Inspection) remediation:
+  // The login endpoint previously held Tom's password in a String variable
+  // that was never cleared.  The fix converts it to a char[] that is zeroed
+  // in a finally block.  These tests verify the password-comparison logic
+  // still behaves correctly after that change.
+  // -----------------------------------------------------------------------
+
+  @Test
+  void loginWithWrongEmailShouldFail() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                .param("email", "notTom@example.com")
+                .param("password", "any"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted").value(false));
+  }
+
+  @Test
+  void loginWithTomEmailAndDefaultPasswordShouldFail() throws Exception {
+    // The stored password for an unknown user falls back to PASSWORD_TOM_9;
+    // the endpoint rejects that case (the lesson requires the attacker to
+    // discover and supply the *changed* password).
+    ResetLinkAssignment.usersToTomPassword.remove("testUser");
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                .param("email", TOM_EMAIL)
+                .param("password", ResetLinkAssignment.PASSWORD_TOM_9))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.lessonCompleted").value(false));
+  }
+
+  @Test
+  void loginWithTomEmailAndChangedPasswordShouldSucceed() throws Exception {
+    // Simulate a prior password-change that stored a new password for this user.
+    String changedPassword = "changedByAttacker123";
+    ResetLinkAssignment.usersToTomPassword.put("testUser", changedPassword);
+    try {
+      mockMvc
+          .perform(
+              MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                  .param("email", TOM_EMAIL)
+                  .param("password", changedPassword))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.lessonCompleted").value(true));
+    } finally {
+      ResetLinkAssignment.usersToTomPassword.remove("testUser");
+    }
+  }
+
+  @Test
+  void loginWithTomEmailAndWrongPasswordShouldFail() throws Exception {
+    // The stored password exists but the supplied password is wrong.
+    ResetLinkAssignment.usersToTomPassword.put("testUser", "correctPassword");
+    try {
+      mockMvc
+          .perform(
+              MockMvcRequestBuilders.post("/PasswordReset/reset/login")
+                  .param("email", TOM_EMAIL)
+                  .param("password", "wrongPassword"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.lessonCompleted").value(false));
+    } finally {
+      ResetLinkAssignment.usersToTomPassword.remove("testUser");
+    }
   }
 
   @Test
