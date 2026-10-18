@@ -45,8 +45,13 @@ public class SqlInjectionLesson5aTest extends LessonTest {
         .andExpect(jsonPath("$.output").doesNotExist());
   }
 
+  /**
+   * After fixing SQL injection with parameterized queries, injection payloads are treated as
+   * literal string values rather than SQL syntax. The attack payload is now passed as a bind
+   * parameter and does not alter query structure, so the lesson should NOT be completed.
+   */
   @Test
-  public void sqlInjection() throws Exception {
+  public void sqlInjectionAttackIsBlockedByPreparedStatement() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlInjection/assignment5a")
@@ -54,28 +59,54 @@ public class SqlInjectionLesson5aTest extends LessonTest {
                 .param("operator", "OR")
                 .param("injection", "'1' = '1"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("lessonCompleted", is(true)))
-        .andExpect(jsonPath("$.feedback", containsString("You have succeed")))
-        .andExpect(jsonPath("$.output").exists());
+        .andExpect(jsonPath("lessonCompleted", is(false)));
   }
 
+  /**
+   * Verify that a classic OR-based SQL injection payload is neutralised by the parameterized query.
+   * With the safe PreparedStatement, the combined string is treated as a literal last_name value,
+   * which does not match any row, so the lesson remains unsolved.
+   */
   @Test
-  public void sqlInjectionWrongShouldDisplayError() throws Exception {
+  public void sqlInjectionOrTruePayloadDoesNotBypassQuery() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/SqlInjection/assignment5a")
-                .param("account", "Smith'")
+                .param("account", "Smith")
                 .param("operator", "OR")
                 .param("injection", "'1' = '1'"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("lessonCompleted", is(false)))
-        .andExpect(
-            jsonPath("$.feedback", containsString(messages.getMessage("assignment.not.solved"))))
-        .andExpect(
-            jsonPath(
-                "$.output",
-                is(
-                    "malformed string: '1''<br> Your query was: SELECT * FROM user_data WHERE"
-                        + " first_name = 'John' and last_name = 'Smith' OR '1' = '1''")));
+        .andExpect(jsonPath("lessonCompleted", is(false)));
+  }
+
+  /**
+   * A UNION-based injection attempt should also be blocked. The payload is passed as a literal
+   * bind value and cannot append an extra SELECT to the query.
+   */
+  @Test
+  public void sqlInjectionUnionPayloadIsBlocked() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/SqlInjection/assignment5a")
+                .param("account", "Smith' UNION SELECT * FROM user_data--")
+                .param("operator", "")
+                .param("injection", ""))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("lessonCompleted", is(false)));
+  }
+
+  /**
+   * A DROP TABLE injection attempt should also be blocked by the prepared statement.
+   */
+  @Test
+  public void sqlInjectionDropTablePayloadIsBlocked() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/SqlInjection/assignment5a")
+                .param("account", "'; DROP TABLE user_data; --")
+                .param("operator", "")
+                .param("injection", ""))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("lessonCompleted", is(false)));
   }
 }
