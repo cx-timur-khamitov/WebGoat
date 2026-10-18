@@ -28,9 +28,14 @@ public class JWTController {
       produces = APPLICATION_JSON_VALUE)
   public JWTToken decode(@RequestBody MultiValueMap<String, String> formData) {
     var jwt = formData.getFirst("token");
-    var secretKey = formData.getFirst("secretKey");
     var jwks = formData.getFirst("jwks");
-    return JWTToken.decode(jwt, secretKey, jwks);
+    // Use char[] for the secret key so it can be zeroed out after use (CWE-244)
+    char[] secretKey = toCharArray(formData.getFirst("secretKey"));
+    try {
+      return JWTToken.decode(jwt, secretKey, jwks);
+    } finally {
+      java.util.Arrays.fill(secretKey, '\0');
+    }
   }
 
   @PostMapping(
@@ -40,7 +45,17 @@ public class JWTController {
   public JWTToken encode(@RequestBody MultiValueMap<String, String> formData) {
     var header = formData.getFirst("header");
     var payload = formData.getFirst("payload");
-    var secretKey = formData.getFirst("secretKey");
-    return JWTToken.encode(header, payload, secretKey);
+    // Use char[] for the secret key so it can be zeroed out after use (CWE-244)
+    char[] secretKey = toCharArray(formData.getFirst("secretKey"));
+    try {
+      return JWTToken.encode(header, payload, secretKey);
+    } finally {
+      java.util.Arrays.fill(secretKey, '\0');
+    }
+  }
+
+  /** Converts a String to a char array, returning an empty array for null input. */
+  private static char[] toCharArray(String value) {
+    return value != null ? value.toCharArray() : new char[0];
   }
 }
