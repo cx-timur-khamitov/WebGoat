@@ -7,6 +7,7 @@ package org.owasp.webgoat.webwolf.jwt;
 import static org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED_VALUE;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
+import java.util.Arrays;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,9 +29,15 @@ public class JWTController {
       produces = APPLICATION_JSON_VALUE)
   public JWTToken decode(@RequestBody MultiValueMap<String, String> formData) {
     var jwt = formData.getFirst("token");
-    var secretKey = formData.getFirst("secretKey");
     var jwks = formData.getFirst("jwks");
-    return JWTToken.decode(jwt, secretKey, jwks);
+    String secretKeyStr = formData.getFirst("secretKey");
+    // Use char[] for the secret key to allow explicit clearing from memory (CWE-244)
+    char[] secretKey = secretKeyStr != null ? secretKeyStr.toCharArray() : new char[0];
+    try {
+      return JWTToken.decode(jwt, secretKey, jwks);
+    } finally {
+      Arrays.fill(secretKey, '\0');
+    }
   }
 
   @PostMapping(
@@ -40,7 +47,13 @@ public class JWTController {
   public JWTToken encode(@RequestBody MultiValueMap<String, String> formData) {
     var header = formData.getFirst("header");
     var payload = formData.getFirst("payload");
-    var secretKey = formData.getFirst("secretKey");
-    return JWTToken.encode(header, payload, secretKey);
+    String secretKeyStr = formData.getFirst("secretKey");
+    // Use char[] for the secret key to allow explicit clearing from memory (CWE-244)
+    char[] secretKey = secretKeyStr != null ? secretKeyStr.toCharArray() : new char[0];
+    try {
+      return JWTToken.encode(header, payload, secretKey);
+    } finally {
+      Arrays.fill(secretKey, '\0');
+    }
   }
 }
