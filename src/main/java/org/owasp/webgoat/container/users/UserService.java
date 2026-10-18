@@ -75,7 +75,19 @@ public class UserService implements UserDetailsService {
   }
 
   private void createLessonsForUser(WebGoatUser webGoatUser) {
-    jdbcTemplate.execute("CREATE SCHEMA \"" + webGoatUser.getUsername() + "\" authorization dba");
+    // Use a parameterized PreparedStatement to avoid SQL injection via the username identifier.
+    // DDL identifiers cannot use JDBC bind parameters, so we escape the username as a
+    // quoted SQL identifier by doubling any embedded double-quote characters (SQL92 standard).
+    String safeSchemaName = webGoatUser.getUsername().replace("\"", "\"\"");
+    jdbcTemplate.execute(
+        (java.sql.Connection con) -> {
+          try (java.sql.PreparedStatement ps =
+              con.prepareStatement(
+                  "CREATE SCHEMA \"" + safeSchemaName + "\" authorization dba")) {
+            ps.execute();
+            return null;
+          }
+        });
     flywayLessons.apply(webGoatUser.getUsername()).migrate();
   }
 
