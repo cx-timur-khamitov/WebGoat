@@ -6,7 +6,6 @@ package org.owasp.webgoat.lessons.missingac;
 
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
-import static org.owasp.webgoat.lessons.missingac.MissingFunctionAC.PASSWORD_SALT_ADMIN;
 
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -43,11 +42,15 @@ public class MissingFunctionACYourHashAdmin implements AssignmentEndpoint {
     // if not admin then return 403
 
     var user = userRepository.findByUsername("Jerry");
-    var displayUser = new DisplayUser(user, PASSWORD_SALT_ADMIN);
-    if (userHash.equals(displayUser.getUserHash())) {
-      return success(this).feedback("access-control.hash.success").build();
-    } else {
-      return failed(this).feedback("access-control.hash.close").build();
+    try {
+      // Use constant-time PBKDF2 verification: extract the embedded random salt from the
+      // submitted hash and recompute to prevent predictable-salt and timing attacks.
+      if (DisplayUser.verifyUserHash(user.getUsername(), user.getPassword(), userHash)) {
+        return success(this).feedback("access-control.hash.success").build();
+      }
+    } catch (Exception ex) {
+      // Fall through to failure response
     }
+    return failed(this).feedback("access-control.hash.close").build();
   }
 }
