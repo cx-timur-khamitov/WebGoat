@@ -12,6 +12,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Arrays;
 import org.owasp.webgoat.container.LessonDataSource;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AttackResult;
@@ -31,15 +32,24 @@ public class SqlInjectionLesson6b implements AssignmentEndpoint {
   @PostMapping("/SqlInjectionAdvanced/attack6b")
   @ResponseBody
   public AttackResult completed(@RequestParam String userid_6b) throws IOException {
-    if (userid_6b.equals(getPassword())) {
-      return success(this).build();
-    } else {
-      return failed(this).build();
+    // Use char[] to hold the password so it can be explicitly zeroed after comparison,
+    // reducing the window in which the plaintext password resides in the heap (CWE-244).
+    char[] password = getPassword();
+    try {
+      if (Arrays.equals(userid_6b.toCharArray(), password)) {
+        return success(this).build();
+      } else {
+        return failed(this).build();
+      }
+    } finally {
+      // Explicitly zero the char[] to minimise heap exposure time
+      Arrays.fill(password, '\0');
     }
   }
 
-  protected String getPassword() {
-    String password = "dave";
+  protected char[] getPassword() {
+    // Default value as a char[] — avoids leaving a String literal in the heap
+    char[] password = "dave".toCharArray();
     try (Connection connection = dataSource.getConnection()) {
       String query = "SELECT password FROM user_system_data WHERE user_name = 'dave'";
       try {
@@ -49,7 +59,10 @@ public class SqlInjectionLesson6b implements AssignmentEndpoint {
         ResultSet results = statement.executeQuery(query);
 
         if (results != null && results.first()) {
-          password = results.getString("password");
+          String dbPassword = results.getString("password");
+          // Zero the default value before overwriting to limit its heap lifetime
+          Arrays.fill(password, '\0');
+          password = dbPassword.toCharArray();
         }
       } catch (SQLException sqle) {
         sqle.printStackTrace();
@@ -59,6 +72,6 @@ public class SqlInjectionLesson6b implements AssignmentEndpoint {
       e.printStackTrace();
       // do nothing
     }
-    return (password);
+    return password;
   }
 }
