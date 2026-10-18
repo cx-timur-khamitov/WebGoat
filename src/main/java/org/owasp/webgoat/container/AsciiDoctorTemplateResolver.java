@@ -136,7 +136,9 @@ public class AsciiDoctorTemplateResolver extends FileTemplateResolver {
     } else {
       String langHeader = request.getHeader(HttpHeaders.ACCEPT_LANGUAGE);
       if (null != langHeader) {
-        log.debug("browser locale {}", langHeader);
+        // Sanitize header value to prevent log forging (CWE-117): strip CR/LF characters
+        String sanitizedLangHeader = langHeader.replaceAll("[\r\n]", "_");
+        log.debug("browser locale {}", sanitizedLangHeader);
         return langHeader.substring(0, 2);
       } else {
         log.debug("browser default english");
