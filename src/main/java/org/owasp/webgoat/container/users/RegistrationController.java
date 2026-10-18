@@ -62,7 +62,17 @@ public class RegistrationController {
   public String registrationOAUTH(Authentication authentication, HttpServletRequest request)
       throws ServletException {
     log.info("register oauth user in database");
-    userService.addUser(authentication.getName(), UUID.randomUUID().toString());
+    String oauthName = authentication.getName();
+    // Validate the OAuth-supplied name against the same allowlist used by normal registration:
+    // must be 6–45 characters of lowercase letters, digits, and hyphens only.
+    if (oauthName == null
+        || oauthName.length() < 6
+        || oauthName.length() > 45
+        || !oauthName.matches("[a-z0-9-]+")) {
+      log.warn("OAuth registration rejected: username does not meet naming requirements");
+      return "redirect:/login?error";
+    }
+    userService.addUser(oauthName, UUID.randomUUID().toString());
     return "redirect:/welcome.mvc";
   }
 }
