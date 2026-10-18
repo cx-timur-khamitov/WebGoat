@@ -85,14 +85,31 @@ public class FileServer {
 
     var destinationDir = new File(fileLocation, username);
     destinationDir.mkdirs();
+    // Strip any directory components from the original filename to prevent path traversal.
+    // StringUtils.getFilename() returns only the filename part (after the last '/') so that
+    // a crafted name such as "../../etc/passwd" cannot escape the per-user upload directory.
+    String safeFilename = StringUtils.getFilename(multipartFile.getOriginalFilename());
+    if (!StringUtils.hasText(safeFilename)) {
+      log.debug("Upload rejected: filename is empty after sanitization for {}", username);
+      return new ModelAndView(
+          new RedirectView("files", true),
+          new ModelMap().addAttribute("uploadSuccess", NOTHING_TO_UPLOAD));
+    }
+    // Resolve the target path and verify it stays inside the per-user directory (containment check).
+    var destinationPath = destinationDir.toPath().resolve(safeFilename).normalize();
+    if (!destinationPath.startsWith(destinationDir.toPath().normalize())) {
+      log.debug("Upload rejected: resolved path escapes the upload directory for {}", username);
+      return new ModelAndView(
+          new RedirectView("files", true),
+          new ModelMap().addAttribute("uploadSuccess", NOTHING_TO_UPLOAD));
+    }
     // DO NOT use multipartFile.transferTo(), see
     // https://stackoverflow.com/questions/60336929/java-nio-file-nosuchfileexception-when-file-transferto-is-called
     try (InputStream is = multipartFile.getInputStream()) {
-      var destinationFile = destinationDir.toPath().resolve(multipartFile.getOriginalFilename());
-      Files.deleteIfExists(destinationFile);
-      Files.copy(is, destinationFile);
+      Files.deleteIfExists(destinationPath);
+      Files.copy(is, destinationPath);
     }
-    log.debug("File saved to {}", new File(destinationDir, multipartFile.getOriginalFilename()));
+    log.debug("File saved to {}", destinationPath);
 
     return new ModelAndView(
         new RedirectView("files", true),
