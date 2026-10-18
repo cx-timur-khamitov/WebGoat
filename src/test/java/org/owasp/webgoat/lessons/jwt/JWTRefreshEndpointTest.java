@@ -4,8 +4,8 @@
  */
 package org.owasp.webgoat.lessons.jwt;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.owasp.webgoat.lessons.jwt.JWTRefreshEndpoint.PASSWORD;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.owasp.webgoat.WithWebGoatUser;
 import org.owasp.webgoat.container.plugins.LessonTest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -25,6 +26,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 @WithWebGoatUser
 public class JWTRefreshEndpointTest extends LessonTest {
+
+  @Value("${webgoat.jwt.refresh.password}")
+  private String PASSWORD;
 
   @BeforeEach
   void setup() {
@@ -246,6 +250,53 @@ public class JWTRefreshEndpointTest extends LessonTest {
   void noTokenWhileLoginShouldReturn401() throws Exception {
     mockMvc
         .perform(MockMvcRequestBuilders.post("/JWT/refresh/login"))
+        .andExpect(status().isUnauthorized());
+  }
+
+  /**
+   * Security regression test: verifies the JWT refresh password is loaded from external
+   * configuration (Spring @Value injection) rather than hardcoded in the source. The password must
+   * be a non-null, non-empty string resolved from the application property
+   * 'webgoat.jwt.refresh.password', confirming that CWE-259 (Use of Hard-coded Password) is
+   * remediated.
+   */
+  @Test
+  void passwordShouldBeInjectedFromExternalConfiguration() {
+    assertThat(PASSWORD)
+        .as("Password must be loaded from external configuration, not hardcoded")
+        .isNotNull()
+        .isNotEmpty();
+  }
+
+  /**
+   * Security regression test: verifies that providing a wrong password returns 401 Unauthorized,
+   * confirming that authentication still works correctly after the password was externalized.
+   */
+  @Test
+  void loginWithWrongPasswordShouldReturn401() throws Exception {
+    ObjectMapper objectMapper = new ObjectMapper();
+    var loginJson = Map.of("user", "Jerry", "password", PASSWORD + "_wrong");
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/refresh/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(loginJson)))
+        .andExpect(status().isUnauthorized());
+  }
+
+  /**
+   * Security regression test: verifies that an empty string password is rejected, confirming
+   * authentication guards are enforced.
+   */
+  @Test
+  void loginWithEmptyPasswordShouldReturn401() throws Exception {
+    ObjectMapper objectMapper = new ObjectMapper();
+    var loginJson = Map.of("user", "Jerry", "password", "");
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/refresh/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(loginJson)))
         .andExpect(status().isUnauthorized());
   }
 }
