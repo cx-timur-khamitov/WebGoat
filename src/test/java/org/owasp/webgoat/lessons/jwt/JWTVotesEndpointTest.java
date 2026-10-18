@@ -37,13 +37,17 @@ public class JWTVotesEndpointTest extends LessonTest {
 
   @Test
   public void solveAssignment() throws Exception {
-    // Create new token and set alg to none and do not sign it
+    // Create a properly-signed admin token to reset votes (the secure path)
     Claims claims = Jwts.claims();
     claims.put("admin", "true");
     claims.put("user", "Tom");
-    String token = Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+    String token =
+        Jwts.builder()
+            .setClaims(claims)
+            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, JWT_PASSWORD)
+            .compact();
 
-    // Call the reset endpoint
+    // Call the reset endpoint with a validly-signed admin token
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/JWT/votings")
@@ -55,13 +59,17 @@ public class JWTVotesEndpointTest extends LessonTest {
 
   @Test
   public void solveAssignmentWithBoolean() throws Exception {
-    // Create new token and set alg to none and do not sign it
+    // Create a properly-signed admin token (boolean admin claim) to reset votes
     Claims claims = Jwts.claims();
     claims.put("admin", true);
     claims.put("user", "Tom");
-    String token = Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+    String token =
+        Jwts.builder()
+            .setClaims(claims)
+            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, JWT_PASSWORD)
+            .compact();
 
-    // Call the reset endpoint
+    // Call the reset endpoint with a validly-signed admin token
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/JWT/votings")
@@ -69,6 +77,60 @@ public class JWTVotesEndpointTest extends LessonTest {
                 .cookie(new Cookie("access_token", token)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.lessonCompleted", is(true)));
+  }
+
+  @Test
+  public void unsignedAlgNoneTokenShouldBeRejectedForReset() throws Exception {
+    // Verify that alg:none (unsigned) tokens are rejected — the fix for CWE-347
+    Claims claims = Jwts.claims();
+    claims.put("admin", "true");
+    claims.put("user", "Tom");
+    String unsignedToken =
+        Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/votings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .cookie(new Cookie("access_token", unsignedToken)))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("jwt-invalid-token"))));
+  }
+
+  @Test
+  public void unsignedAlgNoneTokenShouldReturnGuestViewForGetVotes() throws Exception {
+    // Verify that alg:none (unsigned) tokens are rejected on GET /JWT/votings
+    Claims claims = Jwts.claims();
+    claims.put("admin", "false");
+    claims.put("user", "Tom");
+    String unsignedToken =
+        Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/JWT/votings")
+                .cookie(new Cookie("access_token", unsignedToken)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].numberOfVotes").doesNotExist())
+        .andExpect(jsonPath("$[0].votingAllowed").doesNotExist())
+        .andExpect(jsonPath("$[0].average").doesNotExist());
+  }
+
+  @Test
+  public void unsignedAlgNoneTokenShouldBeRejectedForVoting() throws Exception {
+    // Verify that alg:none (unsigned) tokens are rejected on POST /JWT/votings/{title}
+    Claims claims = Jwts.claims();
+    claims.put("admin", "false");
+    claims.put("user", "Tom");
+    String unsignedToken =
+        Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/votings/Admin lost password")
+                .cookie(new Cookie("access_token", unsignedToken)))
+        .andExpect(status().isUnauthorized());
   }
 
   @Test
