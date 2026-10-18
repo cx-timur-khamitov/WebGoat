@@ -12,9 +12,10 @@ import java.util.List;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.owasp.webgoat.container.CurrentUsername;
+import org.owasp.webgoat.container.users.WebGoatUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -62,9 +63,15 @@ public class MissingFunctionACUsers {
       path = {"access-control/users-admin-fix"},
       consumes = "application/json")
   @ResponseBody
-  public ResponseEntity<List<DisplayUser>> usersFixed(@CurrentUsername String username) {
-    var currentUser = userRepository.findByUsername(username);
-    if (currentUser != null && currentUser.isAdmin()) {
+  public ResponseEntity<List<DisplayUser>> usersFixed(
+      @AuthenticationPrincipal WebGoatUser currentUser) {
+    // Use Spring Security authority check directly from the authenticated principal instead of
+    // a DB lookup on a user-supplied username. This prevents parameter tampering (CWE-472)
+    // by ensuring the authorization decision is based on credentials established at login,
+    // not on data retrieved via a user-controlled parameter.
+    if (currentUser != null
+        && currentUser.getAuthorities().stream()
+            .anyMatch(a -> WebGoatUser.ROLE_ADMIN.equals(a.getAuthority()))) {
       return ResponseEntity.ok(
           userRepository.findAllUsers().stream()
               .map(user -> new DisplayUser(user, PASSWORD_SALT_ADMIN))
