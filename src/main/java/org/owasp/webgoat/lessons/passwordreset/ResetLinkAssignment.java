@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.ModelAndView;
+import org.springframework.web.util.HtmlUtils;
 
 @RestController
 @AssignmentHints({
@@ -80,9 +81,11 @@ public class ResetLinkAssignment implements AssignmentEndpoint {
   @GetMapping("/PasswordReset/reset/reset-password/{link}")
   public ModelAndView resetPassword(@PathVariable(value = "link") String link, Model model) {
     ModelAndView modelAndView = new ModelAndView();
-    if (ResetLinkAssignment.resetLinks.contains(link)) {
+    // HTML-encode the link at the input boundary to prevent XSS before placing it in the model
+    String safeLink = HtmlUtils.htmlEscape(link);
+    if (ResetLinkAssignment.resetLinks.contains(safeLink)) {
       PasswordChangeForm form = new PasswordChangeForm();
-      form.setResetLink(link);
+      form.setResetLink(safeLink);
       model.addAttribute("form", form);
       modelAndView.addObject("form", form);
       modelAndView.setViewName(
