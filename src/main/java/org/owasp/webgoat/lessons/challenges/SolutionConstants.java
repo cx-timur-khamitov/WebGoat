@@ -4,8 +4,25 @@
  */
 package org.owasp.webgoat.lessons.challenges;
 
-public interface SolutionConstants {
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
 
-  // TODO should be random generated when starting the server
-  String PASSWORD = "!!webgoat_admin_1234!!";
+/**
+ * Holds solution constants for WebGoat challenge lessons. The admin password is loaded from the
+ * {@code WEBGOAT_ADMIN_PASSWORD} environment variable (or the {@code webgoat.challenge.admin.password}
+ * application property), so it is no longer hardcoded in the source.
+ */
+@Configuration
+public class SolutionConstants {
+
+  private final String password;
+
+  public SolutionConstants(
+      @Value("${webgoat.challenge.admin.password}") String password) {
+    this.password = password;
+  }
+
+  public String getPassword() {
+    return password;
+  }
 }
