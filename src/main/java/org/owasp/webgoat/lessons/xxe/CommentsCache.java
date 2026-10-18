@@ -70,10 +70,20 @@ public class CommentsCache {
     var jc = JAXBContext.newInstance(Comment.class);
     var xif = XMLInputFactory.newInstance();
 
-    // TODO fix me disabled for now.
-    if (securityEnabled) {
-      xif.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, ""); // Compliant
-      xif.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); // compliant
+    // Disable external entity processing by default to prevent XXE attacks (CWE-611).
+    // External entity resolution is only re-enabled when securityEnabled=false, which is
+    // intentional for WebGoat's XXE lesson exercises that demonstrate the vulnerability.
+    xif.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, ""); // Compliant
+    xif.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); // Compliant
+    xif.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE);
+    xif.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE);
+
+    if (!securityEnabled) {
+      // Intentionally re-enable for the WebGoat XXE lesson (demonstrates the vulnerability).
+      xif.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "all");
+      xif.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "all");
+      xif.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.TRUE);
+      xif.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.TRUE);
     }
 
     var xsr = xif.createXMLStreamReader(new StringReader(xml));
