@@ -10,6 +10,8 @@ import static org.owasp.webgoat.container.assignments.AttackResultBuilder.succes
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
@@ -24,6 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 @AssignmentHints({"ssrf.hint3"})
 public class SSRFTask2 implements AssignmentEndpoint {
 
+  // Allowlist of the single permitted external host for this lesson
+  private static final String ALLOWED_HOST = "ifconfig.pro";
+
   @PostMapping("/SSRF/task2")
   @ResponseBody
   public AttackResult completed(@RequestParam String url) {
@@ -31,7 +36,17 @@ public class SSRFTask2 implements AssignmentEndpoint {
   }
 
   protected AttackResult furBall(String url) {
-    if (url.matches("http://ifconfig\\.pro")) {
+    // Validate the URL using stdlib URI parsing and an explicit host allowlist
+    // to prevent SSRF (CWE-918). Only requests to the allowed host are permitted.
+    String host;
+    try {
+      URI uri = new URI(url);
+      host = uri.getHost();
+    } catch (URISyntaxException e) {
+      return getFailedResult("<img class=\"image\" alt=\"image post\" src=\"images/cat.jpg\">");
+    }
+
+    if (ALLOWED_HOST.equals(host)) {
       String html;
       try (InputStream in = new URL(url).openStream()) {
         html =
