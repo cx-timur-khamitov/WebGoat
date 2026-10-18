@@ -28,15 +28,16 @@ class SimpleXXETest extends LessonTest {
   }
 
   @Test
-  void workingAttack() throws Exception {
-    // Call with XXE injection
+  void xxeAttackIsNowBlockedBySecureParser() throws Exception {
+    // With external entity processing disabled unconditionally, the XXE payload that previously
+    // read a file from disk is now rejected — the assignment cannot be solved via XXE injection.
     mockMvc
         .perform(
             MockMvcRequestBuilders.post("/xxe/simple")
                 .content(XXETestPayload.readKnownFile(tempDir)))
         .andExpect(status().isOk())
         .andExpect(
-            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("assignment.solved"))));
+            jsonPath("$.feedback", CoreMatchers.is(messages.getMessage("assignment.not.solved"))));
   }
 
   @Test
