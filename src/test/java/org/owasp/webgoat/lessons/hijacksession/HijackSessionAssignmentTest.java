@@ -65,4 +65,36 @@ class HijackSessionAssignmentTest extends LessonTest {
     result.andExpect(cookie().value(COOKIE_NAME, not(emptyString())));
     result.andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
   }
+
+  @Test
+  void testCookieHasHttpOnlyFlag() throws Exception {
+    lenient().when(authenticationMock.isAuthenticated()).thenReturn(false);
+    lenient()
+        .when(providerMock.authenticate(any(Authentication.class)))
+        .thenReturn(authenticationMock);
+    ResultActions result =
+        mockMvc.perform(
+            MockMvcRequestBuilders.post(LOGIN_CONTEXT_PATH)
+                .param("username", "webgoat")
+                .param("password", "webgoat"));
+
+    // Verify the HttpOnly flag is set on the hijack_cookie to prevent client-side script access
+    result.andExpect(cookie().httpOnly(COOKIE_NAME, true));
+  }
+
+  @Test
+  void testCookieHasSecureFlag() throws Exception {
+    lenient().when(authenticationMock.isAuthenticated()).thenReturn(false);
+    lenient()
+        .when(providerMock.authenticate(any(Authentication.class)))
+        .thenReturn(authenticationMock);
+    ResultActions result =
+        mockMvc.perform(
+            MockMvcRequestBuilders.post(LOGIN_CONTEXT_PATH)
+                .param("username", "webgoat")
+                .param("password", "webgoat"));
+
+    // Verify the Secure flag is set to prevent cookie transmission over non-HTTPS connections
+    result.andExpect(cookie().secure(COOKIE_NAME, true));
+  }
 }
