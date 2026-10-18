@@ -4,14 +4,12 @@
  */
 package org.owasp.webgoat.lessons.sqlinjection.introduction;
 
-import static java.sql.ResultSet.CONCUR_READ_ONLY;
-import static java.sql.ResultSet.TYPE_SCROLL_INSENSITIVE;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.failed;
 import static org.owasp.webgoat.container.assignments.AttackResultBuilder.success;
 
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import org.owasp.webgoat.container.LessonDataSource;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
 import org.owasp.webgoat.container.assignments.AssignmentHints;
@@ -39,24 +37,28 @@ public class SqlInjectionLesson2 implements AssignmentEndpoint {
 
   @PostMapping("/SqlInjection/attack2")
   @ResponseBody
-  public AttackResult completed(@RequestParam String query) {
-    return injectableQuery(query);
+  public AttackResult completed(@RequestParam String userid) {
+    return secureQuery(userid);
   }
 
-  protected AttackResult injectableQuery(String query) {
+  protected AttackResult secureQuery(String userid) {
     try (var connection = dataSource.getConnection()) {
-      Statement statement = connection.createStatement(TYPE_SCROLL_INSENSITIVE, CONCUR_READ_ONLY);
-      ResultSet results = statement.executeQuery(query);
+      // Use a parameterized PreparedStatement to prevent SQL injection.
+      // The user-supplied userid is bound as a typed parameter, never concatenated into SQL.
+      PreparedStatement statement =
+          connection.prepareStatement(
+              "SELECT department FROM employees WHERE userid = ?",
+              ResultSet.TYPE_SCROLL_INSENSITIVE,
+              ResultSet.CONCUR_READ_ONLY);
+      statement.setString(1, userid);
+      ResultSet results = statement.executeQuery();
       StringBuilder output = new StringBuilder();
 
-      if(!results.first()) {
-          return failed(this).feedback("sql-injection.2.failed").build();
+      if (!results.first()) {
+        return failed(this).feedback("sql-injection.2.failed").build();
       }
 
       if ("Marketing".equals(results.getString("department"))) {
-        output.append("<span class='feedback-positive'>")
-                .append(query)
-                .append("</span>");
         output.append(SqlInjectionLesson8.generateTable(results));
         return success(this).feedback("sql-injection.2.success").output(output.toString()).build();
       } else {
