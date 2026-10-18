@@ -129,6 +129,101 @@ class FileServerTest {
         .andExpect(model().attributeDoesNotExist("uploadSuccess", "uploadFailed"));
   }
 
+  // -------------------------------------------------------------------------
+  // Path traversal security tests (CWE-23 / Relative_Path_Traversal)
+  // -------------------------------------------------------------------------
+
+  @Test
+  @DisplayName("Upload with a relative path traversal filename is rejected")
+  void shouldRejectRelativePathTraversalFilename() throws Exception {
+    // Attacker crafts a filename that tries to escape the per-user upload directory
+    var traversalFile =
+        new MockMultipartFile(
+            "file",
+            "../../etc/passwd",
+            "text/plain",
+            "malicious content".getBytes(StandardCharsets.UTF_8));
+
+    mockMvc
+        .perform(multipart("/fileupload").file(traversalFile).principal(AUTHENTICATION))
+        .andExpect(status().is3xxRedirection());
+
+    // The sensitive target must NOT have been written outside the upload directory
+    var passwdFile = fileServerLocation.getParent().resolve("etc/passwd");
+    Assertions.assertThat(passwdFile).doesNotExist();
+    // Nothing should have landed in the user directory either (rejected)
+    Assertions.assertThat(uploadedFiles()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("Upload with a Windows-style path traversal filename is rejected")
+  void shouldRejectWindowsStylePathTraversalFilename() throws Exception {
+    var traversalFile =
+        new MockMultipartFile(
+            "file",
+            "..\\..\\windows\\system32\\config\\sam",
+            "application/octet-stream",
+            "malicious".getBytes(StandardCharsets.UTF_8));
+
+    mockMvc
+        .perform(multipart("/fileupload").file(traversalFile).principal(AUTHENTICATION))
+        .andExpect(status().is3xxRedirection());
+
+    // Only the base filename (if any) may end up in the user directory
+    var samFile =
+        fileServerLocation
+            .getParent()
+            .resolve("windows")
+            .resolve("system32")
+            .resolve("config")
+            .resolve("sam");
+    Assertions.assertThat(samFile).doesNotExist();
+  }
+
+  @Test
+  @DisplayName("Upload with a path-only filename (no basename) is treated as nothing-to-upload")
+  void shouldRejectFilenameWithNoBasenameAfterStripping() throws Exception {
+    // A filename like "../../" has no basename after stripping directory components
+    var traversalOnlyFile =
+        new MockMultipartFile(
+            "file",
+            "../",
+            "text/plain",
+            "malicious".getBytes(StandardCharsets.UTF_8));
+
+    mockMvc
+        .perform(multipart("/fileupload").file(traversalOnlyFile).principal(AUTHENTICATION))
+        .andExpect(status().is3xxRedirection())
+        .andExpect(redirectedUrl("files?uploadSuccess=Nothing+to+upload"));
+
+    Assertions.assertThat(uploadedFiles()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("A normal filename with directory prefix is stored under its basename only")
+  void shouldStoreFileUsingOnlyItsBasename() throws Exception {
+    // "subdir/report.txt" — directory part must be stripped, only "report.txt" is stored
+    var nestedFile =
+        new MockMultipartFile(
+            "file",
+            "subdir/report.txt",
+            "text/plain",
+            "content".getBytes(StandardCharsets.UTF_8));
+
+    mockMvc
+        .perform(multipart("/fileupload").file(nestedFile).principal(AUTHENTICATION))
+        .andExpect(status().is3xxRedirection())
+        .andExpect(redirectedUrl("files?uploadSuccess=File+uploaded+successful"));
+
+    // File must land directly in the user directory, not in a sub-directory
+    Assertions.assertThat(userDirectory().resolve("report.txt")).exists();
+    Assertions.assertThat(userDirectory().resolve("subdir")).doesNotExist();
+  }
+
+  // -------------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------------
+
   private Path userDirectory() {
     return fileServerLocation.resolve(USERNAME);
   }
