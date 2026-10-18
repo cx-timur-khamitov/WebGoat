@@ -4,8 +4,9 @@
  */
 package org.owasp.webgoat.container.users;
 
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -18,16 +19,32 @@ import org.springframework.stereotype.Component;
  * or re-ensured (for admins), making this bean idempotent across restarts.
  */
 @Component
-@AllArgsConstructor
 @Slf4j
 public class DefaultUserInitializer implements ApplicationRunner {
 
   private static final String ADMIN_USERNAME = "webgoat-admin";
   private static final String DEFAULT_USER_USERNAME = "webgoat-user";
-  private static final String DEFAULT_PASSWORD = "webgoat";
 
   private final UserRepository userRepository;
   private final UserService userService;
+
+  /**
+   * The default password for seeded demo accounts, loaded from the external configuration
+   * property {@code webgoat.default.password} (overridable via the {@code WEBGOAT_DEFAULT_PASSWORD}
+   * environment variable). The password is never stored as a literal in source code so that
+   * operators can rotate it without rebuilding the application.
+   */
+  private final String defaultPassword;
+
+  @Autowired
+  public DefaultUserInitializer(
+      UserRepository userRepository,
+      UserService userService,
+      @Value("${webgoat.default.password}") String defaultPassword) {
+    this.userRepository = userRepository;
+    this.userService = userService;
+    this.defaultPassword = defaultPassword;
+  }
 
   @Override
   public void run(ApplicationArguments args) {
@@ -36,12 +53,12 @@ public class DefaultUserInitializer implements ApplicationRunner {
       // Always ensure the admin has the correct role AND the known demo password so that
       // the credentials remain predictable after every restart regardless of mid-session resets.
       userRepository.save(
-          new WebGoatUser(ADMIN_USERNAME, DEFAULT_PASSWORD, WebGoatUser.ROLE_ADMIN));
+          new WebGoatUser(ADMIN_USERNAME, defaultPassword, WebGoatUser.ROLE_ADMIN));
       log.info(
           "Ensured '{}' account is WEBGOAT_ADMIN with the default demo password.",
           ADMIN_USERNAME);
     } else {
-      userRepository.save(new WebGoatUser(ADMIN_USERNAME, DEFAULT_PASSWORD, WebGoatUser.ROLE_ADMIN));
+      userRepository.save(new WebGoatUser(ADMIN_USERNAME, defaultPassword, WebGoatUser.ROLE_ADMIN));
       log.info(
           "Created default admin account '{}' with role {}.",
           ADMIN_USERNAME,
@@ -52,7 +69,7 @@ public class DefaultUserInitializer implements ApplicationRunner {
     if (!userRepository.existsByUsername(DEFAULT_USER_USERNAME)) {
       // Use UserService here because it properly provisions lessons and progress trackers
       // for a normal user, which is required for them to actually play the game.
-      userService.addUser(DEFAULT_USER_USERNAME, DEFAULT_PASSWORD);
+      userService.addUser(DEFAULT_USER_USERNAME, defaultPassword);
       log.info("Created default regular user account '{}' and provisioned lessons.", DEFAULT_USER_USERNAME);
     } else {
       log.info("Default regular user account '{}' already exists. Skipping initialization.", DEFAULT_USER_USERNAME);
