@@ -248,4 +248,98 @@ public class JWTRefreshEndpointTest extends LessonTest {
         .perform(MockMvcRequestBuilders.post("/JWT/refresh/login"))
         .andExpect(status().isUnauthorized());
   }
+
+  /**
+   * Security regression test for CWE-347 (Improper Verification of Cryptographic Signature).
+   *
+   * <p>The newToken endpoint must use parseClaimsJws() (signature-verifying) rather than parse()
+   * (non-verifying). A forged token with alg=none must be rejected — an attacker should not be
+   * able to obtain a new access token for an arbitrary user without a valid signed JWT.
+   */
+  @Test
+  void newTokenEndpointMustRejectAlgNoneForgedToken() throws Exception {
+    ObjectMapper objectMapper = new ObjectMapper();
+
+    // First, obtain a valid refresh token by logging in as Jerry
+    var loginJson = Map.of("user", "Jerry", "password", PASSWORD);
+    MvcResult result =
+        mockMvc
+            .perform(
+                MockMvcRequestBuilders.post("/JWT/refresh/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(loginJson)))
+            .andExpect(status().isOk())
+            .andReturn();
+    Map<String, String> tokens =
+        objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
+    String refreshToken = tokens.get("refresh_token");
+
+    // Craft a forged JWT with alg=none claiming to be Tom — no signature, no secret needed
+    String forgedTokenForTom =
+        Jwts.builder()
+            .setHeaderParam("alg", "none")
+            .addClaims(Map.of("admin", "true", "user", "Tom"))
+            .compact();
+
+    Map<String, Object> refreshJson = new HashMap<>();
+    refreshJson.put("refresh_token", refreshToken);
+
+    // The newToken endpoint must reject the forged alg=none token (fix: uses parseClaimsJws)
+    // Before the fix, parse() would accept this token without verifying its signature.
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/refresh/newToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + forgedTokenForTom)
+                .content(objectMapper.writeValueAsString(refreshJson)))
+        .andExpect(status().isUnauthorized());
+  }
+
+  /**
+   * Security regression test: a JWT with a tampered payload (invalid signature) must be rejected
+   * by the newToken endpoint. This verifies that signature verification is enforced.
+   */
+  @Test
+  void newTokenEndpointMustRejectTamperedSignatureToken() throws Exception {
+    ObjectMapper objectMapper = new ObjectMapper();
+
+    // First, obtain a valid refresh token by logging in as Jerry
+    var loginJson = Map.of("user", "Jerry", "password", PASSWORD);
+    MvcResult result =
+        mockMvc
+            .perform(
+                MockMvcRequestBuilders.post("/JWT/refresh/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(loginJson)))
+            .andExpect(status().isOk())
+            .andReturn();
+    Map<String, String> tokens =
+        objectMapper.readValue(result.getResponse().getContentAsString(), Map.class);
+    String jerryAccessToken = tokens.get("access_token");
+    String refreshToken = tokens.get("refresh_token");
+
+    // Tamper with the token: replace the payload section with base64 of a different user claim.
+    // This produces a token whose header and signature are real, but whose payload has been
+    // modified — the signature will not match.
+    String[] parts = jerryAccessToken.split("\\.");
+    // Encode a different payload claiming user=Tom (base64url, no padding)
+    String tamperedPayload =
+        java.util.Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(
+                "{\"iat\":9999999999,\"admin\":\"true\",\"user\":\"Tom\"}".getBytes());
+    String tamperedToken = parts[0] + "." + tamperedPayload + "." + parts[2];
+
+    Map<String, Object> refreshJson = new HashMap<>();
+    refreshJson.put("refresh_token", refreshToken);
+
+    // The newToken endpoint must reject the tampered token due to signature mismatch
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/refresh/newToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + tamperedToken)
+                .content(objectMapper.writeValueAsString(refreshJson)))
+        .andExpect(status().isUnauthorized());
+  }
 }
