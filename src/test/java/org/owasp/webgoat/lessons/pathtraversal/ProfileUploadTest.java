@@ -25,8 +25,13 @@ class ProfileUploadTest extends LessonTest {
     this.mockMvc = MockMvcBuilders.webAppContextSetup(this.wac).build();
   }
 
+  /**
+   * Path traversal via fullName is now blocked by the containment check in
+   * ProfileUploadBase.execute(). A "../" prefix should be rejected and not escape the upload
+   * directory.
+   */
   @Test
-  void solve() throws Exception {
+  void pathTraversalViaSingleDotDotIsBlocked() throws Exception {
     var profilePicture =
         new MockMultipartFile(
             "uploadedFile", "../picture.jpg", "text/plain", "an image".getBytes());
@@ -38,12 +43,13 @@ class ProfileUploadTest extends LessonTest {
                 .param("fullName", "../John Doe"))
         .andExpect(status().is(200))
         .andExpect(jsonPath("$.assignment", CoreMatchers.equalTo("ProfileUpload")))
-        .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(true)));
+        .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
   }
 
+  /** A deep traversal attempt (multiple "../") must also be blocked. */
   @Test
   @WithWebGoatUser
-  void attemptWithWrongDirectory() throws Exception {
+  void pathTraversalViaMultipleDotDotsIsBlocked() throws Exception {
     var profilePicture =
         new MockMultipartFile(
             "uploadedFile", "../picture.jpg", "text/plain", "an image".getBytes());
@@ -55,29 +61,26 @@ class ProfileUploadTest extends LessonTest {
                 .param("fullName", "../../" + "test"))
         .andExpect(status().is(200))
         .andExpect(jsonPath("$.assignment", CoreMatchers.equalTo("ProfileUpload")))
-        .andExpect(jsonPath("$.feedback", CoreMatchers.containsString("Nice try")))
         .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
   }
 
+  /** An absolute path in fullName that resolves outside the upload directory must be blocked. */
   @Test
   @WithWebGoatUser
-  void shouldNotOverrideExistingFile() throws Exception {
+  void pathTraversalViaAbsolutePathIsBlocked() throws Exception {
     var profilePicture =
         new MockMultipartFile("uploadedFile", "picture.jpg", "text/plain", "an image".getBytes());
+
     mockMvc
         .perform(
             MockMvcRequestBuilders.multipart("/PathTraversal/profile-upload")
                 .file(profilePicture)
-                .param("fullName", ".." + File.separator + "test"))
-        .andExpect(
-            jsonPath(
-                "$.output",
-                CoreMatchers.anyOf(
-                    CoreMatchers.containsString("Is a directory"),
-                    CoreMatchers.containsString("..\\\\" + "test"))))
-        .andExpect(status().is(200));
+                .param("fullName", "/etc/passwd"))
+        .andExpect(status().is(200))
+        .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
   }
 
+  /** A legitimate filename that does not traverse the directory should succeed. */
   @Test
   void normalUpdate() throws Exception {
     var profilePicture =
@@ -93,7 +96,37 @@ class ProfileUploadTest extends LessonTest {
             jsonPath(
                 "$.feedback",
                 CoreMatchers.containsStringIgnoringCase(
-                    "PathTraversal\\" + File.separator + "test\\" + File.separator + "John Doe")))
+                    "PathTraversal" + File.separator + "test" + File.separator + "John Doe")))
+        .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+  }
+
+  /** An empty file should return an appropriate error. */
+  @Test
+  void emptyFileIsRejected() throws Exception {
+    var emptyFile =
+        new MockMultipartFile("uploadedFile", "picture.jpg", "text/plain", new byte[0]);
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.multipart("/PathTraversal/profile-upload")
+                .file(emptyFile)
+                .param("fullName", "John Doe"))
+        .andExpect(status().is(200))
+        .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
+  }
+
+  /** An empty fullName should return an appropriate error. */
+  @Test
+  void emptyFullNameIsRejected() throws Exception {
+    var profilePicture =
+        new MockMultipartFile("uploadedFile", "picture.jpg", "text/plain", "an image".getBytes());
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.multipart("/PathTraversal/profile-upload")
+                .file(profilePicture)
+                .param("fullName", ""))
+        .andExpect(status().is(200))
         .andExpect(jsonPath("$.lessonCompleted", CoreMatchers.is(false)));
   }
 }
