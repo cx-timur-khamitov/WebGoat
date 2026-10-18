@@ -26,8 +26,12 @@ public class LandingPage {
         RequestMethod.PUT
       })
   public Callable<ResponseEntity<?>> ok(HttpServletRequest request) {
+    // Sanitize the request URL to prevent log forging (CWE-117): strip CR/LF characters
+    // that an attacker could use to inject fake log entries.
+    String sanitizedUrl =
+        request.getRequestURL().toString().replaceAll("[\r\n]", "_");
     return () -> {
-      log.trace("Incoming request for: {}", request.getRequestURL());
+      log.trace("Incoming request for: {}", sanitizedUrl);
       return ResponseEntity.ok().build();
     };
   }
