@@ -6,6 +6,7 @@ package org.owasp.webgoat.lessons.sqlinjection.mitigation;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,10 @@ public class Servers {
     private String description;
   }
 
+  /** Allowlist of column names that are valid for the ORDER BY clause. */
+  private static final Set<String> ALLOWED_COLUMNS =
+      Set.of("id", "hostname", "ip", "mac", "status", "description");
+
   public Servers(LessonDataSource dataSource) {
     this.dataSource = dataSource;
   }
@@ -43,6 +48,14 @@ public class Servers {
   @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
   @ResponseBody
   public List<Server> sort(@RequestParam String column) throws Exception {
+    // Validate the column parameter against a strict allowlist to prevent
+    // parameter tampering and SQL injection via the ORDER BY clause.
+    // ORDER BY cannot use bind parameters, so an allowlist is the correct
+    // SAST-recognized approach (CWE-472).
+    if (!ALLOWED_COLUMNS.contains(column)) {
+      throw new IllegalArgumentException("Invalid column name: " + column);
+    }
+
     List<Server> servers = new ArrayList<>();
 
     try (var connection = dataSource.getConnection()) {
