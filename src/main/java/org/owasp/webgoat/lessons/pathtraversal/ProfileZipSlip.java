@@ -77,6 +77,10 @@ public class ProfileZipSlip extends ProfileUploadBase {
       while (entries.hasMoreElements()) {
         ZipEntry e = entries.nextElement();
         File f = new File(tmpZipDirectory.toFile(), e.getName());
+        // Prevent Zip Slip: verify the resolved canonical path stays within tmpZipDirectory
+        if (!f.toPath().normalize().startsWith(tmpZipDirectory.normalize())) {
+          return failed(this).feedback("path-traversal-zip-slip.no-traversal").build();
+        }
         InputStream is = zip.getInputStream(e);
         Files.copy(is, f.toPath(), StandardCopyOption.REPLACE_EXISTING);
       }
