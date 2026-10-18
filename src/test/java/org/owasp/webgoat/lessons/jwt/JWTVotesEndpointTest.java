@@ -218,6 +218,62 @@ public class JWTVotesEndpointTest extends LessonTest {
         .andExpect(status().isUnauthorized());
   }
 
+  /**
+   * Security regression: the vote endpoint must reject unsigned (alg:none) tokens.
+   * Previously, parse() accepted unsigned tokens, allowing privilege escalation.
+   * After the fix, parseClaimsJws() enforces signature verification and must reject them.
+   */
+  @Test
+  public void unsignedTokenShouldNotBeAbleToVote() throws Exception {
+    // Craft an unsigned token with a valid user claim — alg:none, no signature
+    Claims claims = Jwts.claims();
+    claims.put("admin", "false");
+    claims.put("user", "Tom");
+    String unsignedToken =
+        Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/votings/Admin lost password")
+                .cookie(new Cookie("access_token", unsignedToken)))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  public void unsignedAdminTokenShouldNotBeAbleToVote() throws Exception {
+    // Craft an unsigned token with elevated admin claim — must be rejected
+    Claims claims = Jwts.claims();
+    claims.put("admin", "true");
+    claims.put("user", "Tom");
+    String unsignedToken =
+        Jwts.builder().setClaims(claims).setHeaderParam("alg", "none").compact();
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/votings/Admin lost password")
+                .cookie(new Cookie("access_token", unsignedToken)))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  public void validSignedTokenShouldStillBeAbleToVote() throws Exception {
+    // Signed tokens from a legitimate login must continue to work after the fix
+    MvcResult result =
+        mockMvc
+            .perform(
+                MockMvcRequestBuilders.get("/JWT/votings/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .param("user", "Jerry"))
+            .andExpect(status().isOk())
+            .andReturn();
+    Cookie cookie = result.getResponse().getCookie("access_token");
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/JWT/votings/Admin lost password").cookie(cookie))
+        .andExpect(status().isAccepted());
+  }
+
   @Test
   public void unknownUserShouldSeeGuestView() throws Exception {
     Claims claims = Jwts.claims();
