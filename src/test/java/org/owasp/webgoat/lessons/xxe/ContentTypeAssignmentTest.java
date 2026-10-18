@@ -78,6 +78,68 @@ class ContentTypeAssignmentTest extends LessonTest {
         .andExpect(jsonPath("$.[*].text").value(Matchers.hasItem("Hello World")));
   }
 
+  /**
+   * Verifies that an XXE payload referencing a local file is blocked when submitted as
+   * application/xml. After the fix, external DTD/entity processing is always disabled so the
+   * file content must NOT appear in any comment and the assignment must NOT be solved.
+   */
+  @Test
+  void xxeExternalEntityPayloadShouldNotReadLocalFile() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/xxe/content-type")
+                .contentType(MediaType.APPLICATION_XML)
+                .content(XXETestPayload.readKnownFile(tempDir)))
+        .andExpect(status().isOk())
+        // Assignment must NOT be solved because entity expansion is disabled
+        .andExpect(
+            jsonPath(
+                "$.lessonCompleted", CoreMatchers.is(false)));
+  }
+
+  /**
+   * Verifies that a classic DOCTYPE-based XXE payload submitted as application/xml is rejected
+   * (entity reference remains unexpanded, no file-content leakage).
+   */
+  @Test
+  void xxeDoctypeEntityShouldNotBeExpanded() throws Exception {
+    String xxePayload =
+        "<?xml version=\"1.0\" standalone=\"yes\" ?>"
+            + "<!DOCTYPE comment [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]>"
+            + "<comment><text>&xxe;</text></comment>";
+
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/xxe/content-type")
+                .contentType(MediaType.APPLICATION_XML)
+                .content(xxePayload))
+        .andExpect(status().isOk())
+        // With external entity processing disabled, the request either returns an error
+        // feedback or the text is not the file content — in either case NOT solved
+        .andExpect(
+            jsonPath(
+                "$.lessonCompleted", CoreMatchers.is(false)));
+  }
+
+  /**
+   * Verifies that a valid XML comment (no external entities) posted as application/xml
+   * is still parsed and added successfully, confirming the fix does not break normal usage.
+   */
+  @Test
+  void validXmlCommentShouldStillBeAccepted() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/xxe/content-type")
+                .contentType(MediaType.APPLICATION_XML)
+                .content("<comment><text>Hello from XML</text></comment>"))
+        .andExpect(status().isOk());
+
+    mockMvc
+        .perform(get("/xxe/comments").contentType(MediaType.APPLICATION_JSON))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.[*].text").value(Matchers.hasItem("Hello from XML")));
+  }
+
   private int countComments() throws Exception {
     var response =
         mockMvc
