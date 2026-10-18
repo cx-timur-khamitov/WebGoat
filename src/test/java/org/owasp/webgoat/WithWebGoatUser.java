@@ -21,6 +21,9 @@ public @interface WithWebGoatUser {
   String username() default "test";
 
   String password() default "password";
+
+  /** Spring authority to assign, e.g. {@code "WEBGOAT_ADMIN"} or {@code "WEBGOAT_USER"}. */
+  String role() default WebGoatUser.ROLE_USER;
 }
 
 class WithMockWebGoatUserSecurityContextFactory
@@ -29,7 +32,7 @@ class WithMockWebGoatUserSecurityContextFactory
   public SecurityContext createSecurityContext(WithWebGoatUser customUser) {
     SecurityContext context = SecurityContextHolder.createEmptyContext();
 
-    WebGoatUser principal = new WebGoatUser(customUser.username(), customUser.password());
+    WebGoatUser principal = new WebGoatUser(customUser.username(), customUser.password(), customUser.role());
     Authentication auth =
         UsernamePasswordAuthenticationToken.authenticated(
             principal, "password", principal.getAuthorities());
