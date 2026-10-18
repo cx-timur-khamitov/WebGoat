@@ -14,8 +14,10 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 public class SqlInjectionLesson13Test extends LessonTest {
 
+  // --- Allowlisted column names: functional tests ---
+
   @Test
-  public void knownAccountShouldDisplayData() throws Exception {
+  public void sortByIdShouldReturnResults() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers").param("column", "id"))
@@ -23,7 +25,56 @@ public class SqlInjectionLesson13Test extends LessonTest {
   }
 
   @Test
-  public void addressCorrectShouldOrderByHostname() throws Exception {
+  public void sortByHostnameShouldReturnResults() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
+                .param("column", "hostname"))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  public void sortByIpShouldReturnResults() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers").param("column", "ip"))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  public void sortByMacShouldReturnResults() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers").param("column", "mac"))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  public void sortByStatusShouldReturnResults() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
+                .param("column", "status"))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  public void sortByDescriptionShouldReturnResults() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
+                .param("column", "description"))
+        .andExpect(status().isOk());
+  }
+
+  // --- SQL injection payloads must be rejected (allowlist enforcement) ---
+
+  /**
+   * A CASE WHEN expression used in blind SQL injection must be rejected because
+   * it is not in the allowlist of valid column names.
+   */
+  @Test
+  public void caseWhenExpressionShouldBeRejected() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
@@ -31,12 +82,14 @@ public class SqlInjectionLesson13Test extends LessonTest {
                     "column",
                     "CASE WHEN (SELECT ip FROM servers WHERE hostname='webgoat-prd') LIKE '104.%'"
                         + " THEN hostname ELSE id END"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+        .andExpect(status().is5xxServerError());
   }
 
+  /**
+   * A CASE WHEN / SUBSTR blind injection payload must be rejected.
+   */
   @Test
-  public void addressCorrectShouldOrderByHostnameUsingSubstr() throws Exception {
+  public void substrInjectionPayloadShouldBeRejected() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
@@ -44,77 +97,69 @@ public class SqlInjectionLesson13Test extends LessonTest {
                     "column",
                     "case when (select ip from servers where hostname='webgoat-prd' and"
                         + " substr(ip,1,1) = '1') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
-
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "case when (select ip from servers where hostname='webgoat-prd' and"
-                        + " substr(ip,2,1) = '0') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
-
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "case when (select ip from servers where hostname='webgoat-prd' and"
-                        + " substr(ip,3,1) = '4') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+        .andExpect(status().is5xxServerError());
   }
 
+  /**
+   * An expression with a boolean true condition must be rejected.
+   */
   @Test
-  public void addressIncorrectShouldOrderByIdUsingSubstr() throws Exception {
-    mockMvc
-        .perform(
-            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "case when (select ip from servers where hostname='webgoat-prd' and"
-                        + " substr(ip,1,1) = '9') IS NOT NULL then hostname else id end"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-dev")));
-  }
-
-  @Test
-  public void trueShouldSortByHostname() throws Exception {
+  public void booleanTrueExpressionShouldBeRejected() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
                 .param("column", "(case when (true) then hostname else id end)"))
-        .andExpect(status().isOk())
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+        .andExpect(status().is5xxServerError());
   }
 
+  /**
+   * A semicolon-terminated injection attempt must be rejected.
+   */
   @Test
-  public void falseShouldSortById() throws Exception {
+  public void semicolonInjectionShouldBeRejected() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param("column", "(case when (true) then hostname else id end)"))
-        .andExpect(status().isOk())
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-acc")));
+                .param("column", "id; DROP TABLE SERVERS--"))
+        .andExpect(status().is5xxServerError());
   }
 
+  /**
+   * An empty string column name must be rejected.
+   */
   @Test
-  public void addressIncorrectShouldOrderByHostname() throws Exception {
+  public void emptyColumnNameShouldBeRejected() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers").param("column", ""))
+        .andExpect(status().is5xxServerError());
+  }
+
+  /**
+   * A column name with SQL comment syntax must be rejected.
+   */
+  @Test
+  public void sqlCommentInjectionShouldBeRejected() throws Exception {
     mockMvc
         .perform(
             MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
-                .param(
-                    "column",
-                    "CASE WHEN (SELECT ip FROM servers WHERE hostname='webgoat-prd') LIKE '192.%'"
-                        + " THEN hostname ELSE id END"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].hostname", is("webgoat-dev")));
+                .param("column", "id--"))
+        .andExpect(status().is5xxServerError());
   }
+
+  /**
+   * An arbitrary unknown column name must be rejected.
+   */
+  @Test
+  public void unknownColumnNameShouldBeRejected() throws Exception {
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/SqlInjectionMitigations/servers")
+                .param("column", "nonexistent_column"))
+        .andExpect(status().is5xxServerError());
+  }
+
+  // --- Other lesson endpoint tests ---
 
   @Test
   public void postingCorrectAnswerShouldPassTheLesson() throws Exception {
