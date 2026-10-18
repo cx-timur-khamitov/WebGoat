@@ -10,6 +10,7 @@ import static org.owasp.webgoat.container.assignments.AttackResultBuilder.succes
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.Arrays;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.owasp.webgoat.container.assignments.AssignmentEndpoint;
@@ -34,8 +35,11 @@ public class SpoofCookieAssignment implements AssignmentEndpoint {
       "Cookie details for user %s:<br />" + COOKIE_NAME + "=%s";
   private static final String ATTACK_USERNAME = "tom";
 
-  private static final Map<String, String> users =
-      Map.of("webgoat", "webgoat", "admin", "admin", ATTACK_USERNAME, "apasswordfortom");
+  private static final Map<String, char[]> users =
+      Map.of(
+          "webgoat", "webgoat".toCharArray(),
+          "admin", "admin".toCharArray(),
+          ATTACK_USERNAME, "apasswordfortom".toCharArray());
 
   @PostMapping(path = "/SpoofCookie/login")
   @ResponseBody
@@ -64,21 +68,29 @@ public class SpoofCookieAssignment implements AssignmentEndpoint {
       String username, String password, HttpServletResponse response) {
     String lowerCasedUsername = username.toLowerCase();
     if (ATTACK_USERNAME.equals(lowerCasedUsername)
-        && users.get(lowerCasedUsername).equals(password)) {
+        && Arrays.equals(users.get(lowerCasedUsername), password.toCharArray())) {
       return informationMessage(this).feedback("spoofcookie.cheating").build();
     }
 
-    String authPassword = users.getOrDefault(lowerCasedUsername, "");
-    if (!authPassword.isBlank() && authPassword.equals(password)) {
-      String newCookieValue = EncDec.encode(lowerCasedUsername);
-      Cookie newCookie = new Cookie(COOKIE_NAME, newCookieValue);
-      newCookie.setPath("/WebGoat");
-      newCookie.setSecure(true);
-      response.addCookie(newCookie);
-      return informationMessage(this)
-          .feedback("spoofcookie.login")
-          .output(String.format(COOKIE_INFO, lowerCasedUsername, newCookie.getValue()))
-          .build();
+    // Use char[] to hold the password so it can be zeroed from memory after use (CWE-244)
+    char[] authPassword = users.getOrDefault(lowerCasedUsername, new char[0]);
+    try {
+      if (authPassword.length > 0 && Arrays.equals(authPassword, password.toCharArray())) {
+        String newCookieValue = EncDec.encode(lowerCasedUsername);
+        Cookie newCookie = new Cookie(COOKIE_NAME, newCookieValue);
+        newCookie.setPath("/WebGoat");
+        newCookie.setSecure(true);
+        response.addCookie(newCookie);
+        return informationMessage(this)
+            .feedback("spoofcookie.login")
+            .output(String.format(COOKIE_INFO, lowerCasedUsername, newCookie.getValue()))
+            .build();
+      }
+    } finally {
+      // Zero out the temporary password copy to reduce heap exposure window
+      if (!users.containsKey(lowerCasedUsername)) {
+        Arrays.fill(authPassword, '\0');
+      }
     }
 
     return informationMessage(this).feedback("spoofcookie.wrong-login").build();
