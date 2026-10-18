@@ -93,6 +93,19 @@ public class JWTVotesEndpointTest extends LessonTest {
   }
 
   @Test
+  public void guestCookieShouldBeHttpOnly() throws Exception {
+    // Verify that the empty access_token cookie returned for an unknown user has HttpOnly set,
+    // preventing JavaScript from reading it via document.cookie (CWE-1004 remediation).
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/JWT/votings/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .param("user", "Guest"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(cookie().httpOnly("access_token", true));
+  }
+
+  @Test
   public void tomShouldGetAToken() throws Exception {
     mockMvc
         .perform(
@@ -101,6 +114,20 @@ public class JWTVotesEndpointTest extends LessonTest {
                 .param("user", "Tom"))
         .andExpect(status().isOk())
         .andExpect(cookie().value("access_token", containsString("eyJhbGciOiJIUzUxMiJ9.")));
+  }
+
+  @Test
+  public void tomCookieShouldBeHttpOnly() throws Exception {
+    // Verify that the JWT access_token cookie returned for a valid user has HttpOnly set,
+    // preventing JavaScript from reading the session token via document.cookie (CWE-1004
+    // remediation).
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.get("/JWT/votings/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .param("user", "Tom"))
+        .andExpect(status().isOk())
+        .andExpect(cookie().httpOnly("access_token", true));
   }
 
   @Test
